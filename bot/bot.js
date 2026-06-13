@@ -58,6 +58,21 @@ async function sendToLogChannel(guild, embed) {
   }
 }
 
+// Helper to safely reply or edit reply to interactions without crashing on expired tokens
+async function safeReply(interaction, options) {
+  try {
+    if (interaction.deferred) {
+      await interaction.editReply(options);
+    } else if (interaction.replied) {
+      await interaction.followUp(options);
+    } else {
+      await interaction.reply(options);
+    }
+  } catch (err) {
+    console.error('Failed to safely reply to interaction:', err.message);
+  }
+}
+
 // Helper: Extract a short display name from a long URL
 function getShortFileName(url, index) {
   try {
@@ -159,23 +174,27 @@ client.once('ready', async () => {
 client.on('interactionCreate', async (interaction) => {
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'setup-ticket') {
-      await interaction.deferReply({ ephemeral: true });
-      
-      const embed = new EmbedBuilder()
-        .setTitle('🎫 FiveM Server Support & Evidence Submission')
-        .setDescription('หากท่านต้องการเปิดเคส ส่งข้อมูลหลักฐาน แจ้งปัญหา หรือรายงานผู้เล่น\nกรุณาคลิกปุ่ม **"📩 Open Ticket (เปิดเคส)"** ด้านล่างนี้เพื่อพูดคุยกับทีมงานแอดมินเป็นการส่วนตัวครับ')
-        .setColor(0x5865F2)
-        .setTimestamp();
+      try {
+        await interaction.deferReply({ ephemeral: true });
+        
+        const embed = new EmbedBuilder()
+          .setTitle('🎫 FiveM Server Support & Evidence Submission')
+          .setDescription('หากท่านต้องการเปิดเคส ส่งข้อมูลหลักฐาน แจ้งปัญหา หรือรายงานผู้เล่น\nกรุณาคลิกปุ่ม **"📩 Open Ticket (เปิดเคส)"** ด้านล่างนี้เพื่อพูดคุยกับทีมงานแอดมินเป็นการส่วนตัวครับ')
+          .setColor(0x5865F2)
+          .setTimestamp();
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('open_ticket')
-          .setLabel('📩 Open Ticket (เปิดเคส)')
-          .setStyle(ButtonStyle.Primary)
-      );
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('open_ticket')
+            .setLabel('📩 Open Ticket (เปิดเคส)')
+            .setStyle(ButtonStyle.Primary)
+        );
 
-      await interaction.channel.send({ embeds: [embed], components: [row] });
-      await interaction.editReply({ content: 'สร้างโพสต์ระบบตั๋วเรียบร้อยแล้ว!' });
+        await interaction.channel.send({ embeds: [embed], components: [row] });
+        await safeReply(interaction, { content: 'สร้างโพสต์ระบบตั๋วเรียบร้อยแล้ว!' });
+      } catch (err) {
+        console.error('Error in setup-ticket command:', err.message);
+      }
     }
   }
 
@@ -197,8 +216,8 @@ client.on('interactionCreate', async (interaction) => {
           ephemeral: true
         });
       } else {
-        await interaction.deferReply({ ephemeral: true });
         try {
+          await interaction.deferReply({ ephemeral: true });
           await api.put(`/bot/tickets/${interaction.channel.id}/category`, { category });
           
           // Rename the channel to match the selected category
@@ -217,7 +236,7 @@ client.on('interactionCreate', async (interaction) => {
           };
           const selectedLabel = labels[category] || category;
           
-          await interaction.editReply({
+          await safeReply(interaction, {
             content: `📂 ตั้งค่าหมวดหมู่ของตั๋วร้องเรียนนี้เป็น: **[${selectedLabel}]** เรียบร้อยแล้ว ข้อมูลทั้งหมดจะถูกส่งลงหน้าเว็บในแท็บนี้`
           });
 
@@ -230,7 +249,7 @@ client.on('interactionCreate', async (interaction) => {
           await sendToLogChannel(guild, categoryLogEmbed);
         } catch (err) {
           console.error('Failed to update ticket category:', err.message);
-          await interaction.editReply({ content: 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิฟเวอร์ API หลังบ้านเพื่อตั้งค่าหมวดหมู่' });
+          await safeReply(interaction, { content: 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิฟเวอร์ API หลังบ้านเพื่อตั้งค่าหมวดหมู่' });
         }
       }
     }
@@ -239,11 +258,11 @@ client.on('interactionCreate', async (interaction) => {
   // Handle Modal submissions (for custom categories)
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'custom_category_modal') {
-      await interaction.deferReply({ ephemeral: true });
-      const customCategory = interaction.fields.getTextInputValue('category_name_input').trim();
-      const normalized = customCategory.toLowerCase().replace(/\s+/g, '_');
-      
       try {
+        await interaction.deferReply({ ephemeral: true });
+        const customCategory = interaction.fields.getTextInputValue('category_name_input').trim();
+        const normalized = customCategory.toLowerCase().replace(/\s+/g, '_');
+        
         await api.put(`/bot/tickets/${interaction.channel.id}/category`, { category: normalized });
         
         // Rename the channel to match the custom category
@@ -252,7 +271,7 @@ client.on('interactionCreate', async (interaction) => {
           console.error('Failed to rename channel to custom category:', newChannelName, err.message);
         });
 
-        await interaction.editReply({
+        await safeReply(interaction, {
           content: `✅ สร้างและตั้งค่าตั๋วร้องเรียนนี้เป็นหมวดหมู่ใหม่: **[📂 ${customCategory}]** เรียบร้อยแล้ว ข้อมูลทั้งหมดจะถูกบันทึกเข้าหน้าเว็บแท็บนี้อัตโนมัติ!`
         });
 
@@ -265,7 +284,7 @@ client.on('interactionCreate', async (interaction) => {
         await sendToLogChannel(interaction.guild, categoryLogEmbed);
       } catch (err) {
         console.error('Failed to update custom ticket category:', err.message);
-        await interaction.editReply({ content: 'เกิดข้อผิดพลาดในการบันทึกหมวดหมู่ใหม่ลงเซิฟเวอร์ API' });
+        await safeReply(interaction, { content: 'เกิดข้อผิดพลาดในการบันทึกหมวดหมู่ใหม่ลงเซิฟเวอร์ API' });
       }
     }
   }
@@ -295,9 +314,9 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (customId === 'open_ticket') {
-      await interaction.deferReply({ ephemeral: true });
-
       try {
+        await interaction.deferReply({ ephemeral: true });
+
         const ticketChannelName = `ticket-${user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
         
         // Check if ticket category exists
@@ -403,7 +422,7 @@ client.on('interactionCreate', async (interaction) => {
           components: [categoryMenuRow, closeRow]
         });
 
-        await interaction.editReply({ content: `เปิดตั๋วเรียบร้อยแล้ว! กรุณาตรวจสอบห้องแชท <#${ticketChannel.id}>` });
+        await safeReply(interaction, { content: `เปิดตั๋วเรียบร้อยแล้ว! กรุณาตรวจสอบห้องแชท <#${ticketChannel.id}>` });
 
         // Register Ticket on Backend API (Gracefully - non-blocking!)
         try {
@@ -429,16 +448,16 @@ client.on('interactionCreate', async (interaction) => {
 
       } catch (error) {
         console.error('Error opening ticket:', error);
-        await interaction.editReply({ content: 'ไม่สามารถเปิดตั๋วได้ในขณะนี้ กรุณาติดต่อแอดมินโดยตรง' });
+        await safeReply(interaction, { content: 'ไม่สามารถเปิดตั๋วได้ในขณะนี้ กรุณาติดต่อแอดมินโดยตรง' });
       }
     }
 
     if (customId === 'close_ticket') {
-      await interaction.deferReply({ ephemeral: false });
-
-      const channel = interaction.channel;
-      
       try {
+        await interaction.deferReply({ ephemeral: false });
+
+        const channel = interaction.channel;
+        
         // Call backend API to close ticket
         const response = await api.put(`/bot/tickets/${channel.id}/close`, {
           closedBy: user.username
@@ -450,7 +469,7 @@ client.on('interactionCreate', async (interaction) => {
           .setColor(0xFF2E93)
           .setTimestamp();
 
-        await interaction.editReply({ embeds: [closeEmbed] });
+        await safeReply(interaction, { embeds: [closeEmbed] });
 
         // Send Log to Discord Log Channel if configured
         const closeLogEmbed = new EmbedBuilder()
@@ -471,7 +490,7 @@ client.on('interactionCreate', async (interaction) => {
 
       } catch (error) {
         console.error('Error closing ticket:', error.response?.data || error.message);
-        await interaction.editReply({ content: 'เกิดข้อผิดพลาดในการบันทึกและปิดเคสกับเซิฟเวอร์ API' });
+        await safeReply(interaction, { content: 'เกิดข้อผิดพลาดในการบันทึกและปิดเคสกับเซิฟเวอร์ API' });
       }
     }
   }

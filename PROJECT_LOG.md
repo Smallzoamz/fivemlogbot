@@ -62,6 +62,8 @@
 [2026-06-14 01:00] | File: frontend/src/App.jsx | Line: 274 | Keyword: Discord-Tags-Copy | Status: Success | Change: Implemented a Discord Tag settings modal and updated copy to Discord action to split into 'Log' and 'Announcement' buttons for target categories (ban, warning, orange, fine), allowing automated role/user tag inclusion in copied announcements.
 [2026-06-14 01:10] | File: bot/bot.js | Line: 93 | Keyword: Category-Overhaul | Status: Success | Change: Overhauled all categories on both the web frontend and bot select menu to use the exact list of six categories (fine, warning, orange, ban, inter_register, evidence), added 💸 flying bill emoji and formatting to fine announcement copy actions and web cards.
 [2026-06-14 01:15] | File: bot/bot.js | Line: 96 | Keyword: Penalty-Card-Emojis | Status: Success | Change: Updated Yellow Card and Red Card emojis to 🟨 and 🟥 respectively in mappings, select menu labels, and channel checks on both bot and web frontend to ensure shape and style consistency with the 🟧 Orange Card.
+[2026-06-14 01:20] | File: bot/bot.js | Line: 58 | Keyword: Bot-Crash-Prevention | Status: Success | Change: Created safeReply helper and wrapped all deferReply calls in try-catch blocks to prevent Discord.js Unknown interaction crashes when token expires during slow API responses or network delays.
+
 
 
 
