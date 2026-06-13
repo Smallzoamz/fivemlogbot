@@ -287,11 +287,33 @@ export default function App() {
       });
   }, [token]);
 
-  // Fetch logs list
+  // Fetch logs list & setup polling for real-time updates
   useEffect(() => {
     if (!token) return;
 
     fetchLogs();
+
+    const interval = setInterval(() => {
+      let url = `/api/logs?category=${categoryFilter}`;
+      if (searchQuery) {
+        url += `&search=${encodeURIComponent(searchQuery)}`;
+      }
+
+      fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            const filtered = data.filter(log => !shouldSkipLog(log.details));
+            setLogs(filtered);
+            resolveIps(filtered);
+          }
+        })
+        .catch(err => console.error('Error polling logs:', err));
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [token, categoryFilter, searchQuery]);
 
   const resolveIps = async (logsList) => {

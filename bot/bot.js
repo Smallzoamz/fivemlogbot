@@ -483,7 +483,9 @@ client.on('messageCreate', async (message) => {
   const channel = message.channel;
   
   // Identify if this is a ticket channel (either by database validation or channel name prefix)
-  if (channel.type === ChannelType.GuildText && channel.name.startsWith('ticket-')) {
+  const isTicket = channel.name.startsWith('ticket-') || 
+                   ['🚨', '⚠️', '🐛', '💎', '📝', '✈️', '📂'].some(emoji => channel.name.startsWith(`${emoji}-`));
+  if (channel.type === ChannelType.GuildText && isTicket) {
     if (shouldSkipLog(message.content)) return;
     try {
       const localAttachments = [];
