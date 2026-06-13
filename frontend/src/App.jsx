@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Search, 
   Plus, 
@@ -13,10 +14,12 @@ import {
   Image as ImageIcon,
   ExternalLink,
   Check,
+  X,
   User as UserIcon,
   Shield,
   Globe,
-  Play
+  Play,
+  Info
 } from 'lucide-react';
 
 // Helper: Extract a short display name from a long URL
@@ -315,6 +318,15 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+
+  // Debounce search query to prevent excessive backend API calls
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
   const [categories, setCategories] = useState(['fine', 'warning', 'orange', 'ban', 'inter_register', 'evidence']);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [discordTags, setDiscordTags] = useState(() => {
@@ -327,6 +339,91 @@ export default function App() {
     };
   });
   const [ipCountries, setIpCountries] = useState({});
+
+  const [modalConfig, setModalConfig] = useState({
+    show: false,
+    title: '',
+    message: '',
+    type: 'confirm', // 'confirm' or 'alert'
+    onConfirm: null,
+    onCancel: null,
+    confirmText: 'ตกลง',
+    cancelText: 'ยกเลิก',
+    variant: 'info' // 'info', 'warning', 'success', 'danger'
+  });
+
+  const closeModal = () => {
+    setModalConfig(prev => ({ ...prev, show: false }));
+  };
+
+  const showConfirmModal = ({ title, message, onConfirm, confirmText = 'ตกลง', cancelText = 'ยกเลิก', variant = 'warning' }) => {
+    setModalConfig({
+      show: true,
+      title,
+      message,
+      type: 'confirm',
+      onConfirm: () => {
+        if (onConfirm) onConfirm();
+        closeModal();
+      },
+      onCancel: () => {
+        closeModal();
+      },
+      confirmText,
+      cancelText,
+      variant
+    });
+  };
+
+  const showAlertModal = ({ title, message, onConfirm, confirmText = 'ตกลง', variant = 'info' }) => {
+    setModalConfig({
+      show: true,
+      title,
+      message,
+      type: 'alert',
+      onConfirm: () => {
+        if (onConfirm) onConfirm();
+        closeModal();
+      },
+      onCancel: () => {
+        closeModal();
+      },
+      confirmText,
+      cancelText: '',
+      variant
+    });
+  };
+
+  // Bind global Promise-based alert/confirm functions
+  useEffect(() => {
+    window.showAlert = (message, title = 'การแจ้งเตือน', variant = 'info') => {
+      return new Promise((resolve) => {
+        showAlertModal({
+          title,
+          message,
+          variant,
+          onConfirm: () => resolve(true)
+        });
+      });
+    };
+
+    window.showConfirm = (message, title = 'ยืนยันการทำรายการ', variant = 'warning') => {
+      return new Promise((resolve) => {
+        showConfirmModal({
+          title,
+          message,
+          variant,
+          onConfirm: () => resolve(true),
+          onCancel: () => resolve(false)
+        });
+      });
+    };
+
+    return () => {
+      delete window.showAlert;
+      delete window.showConfirm;
+    };
+  }, []);
   
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -403,8 +500,8 @@ export default function App() {
 
     const interval = setInterval(() => {
       let url = `/api/logs?category=${categoryFilter}`;
-      if (searchQuery) {
-        url += `&search=${encodeURIComponent(searchQuery)}`;
+      if (debouncedSearchQuery) {
+        url += `&search=${encodeURIComponent(debouncedSearchQuery)}`;
       }
 
       fetch(url, {
@@ -422,7 +519,7 @@ export default function App() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [token, categoryFilter, searchQuery]);
+  }, [token, categoryFilter, debouncedSearchQuery]);
 
   const resolveIps = async (logsList) => {
     const ipRegex = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/;
@@ -468,8 +565,8 @@ export default function App() {
   const fetchLogs = () => {
     setLoading(true);
     let url = `/api/logs?category=${categoryFilter}`;
-    if (searchQuery) {
-      url += `&search=${encodeURIComponent(searchQuery)}`;
+    if (debouncedSearchQuery) {
+      url += `&search=${encodeURIComponent(debouncedSearchQuery)}`;
     }
 
     fetch(url, {
@@ -485,6 +582,75 @@ export default function App() {
       })
       .catch(err => console.error('Error fetching logs:', err))
       .finally(() => setLoading(false));
+  };
+
+  const markAsRead = (logId) => {
+    if (!token || !user) return;
+    
+    // Prevent multiple requests by updating local state first (optimistic update)
+    setLogs(prevLogs => 
+      prevLogs.map(log => {
+        if (log.id === logId) {
+          const alreadyRead = log.readBy && log.readBy.some(r => r.userId === user.id);
+          if (alreadyRead) return log;
+          
+          const newReadBy = [...(log.readBy || []), {
+            userId: user.id,
+            username: user.displayName || user.username,
+            readAt: new Date().toISOString()
+          }];
+          return { ...log, readBy: newReadBy };
+        }
+        return log;
+      })
+    );
+
+    // Call API in the background
+    fetch(`/api/logs/${logId}/read`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+      .then(res => res.json())
+      .catch(err => console.error('Error marking log as read:', err));
+  };
+
+  const markAllAsRead = () => {
+    if (!token || !user) return;
+    
+    // Optimistic update locally
+    setLogs(prevLogs => 
+      prevLogs.map(log => {
+        const alreadyRead = log.readBy && log.readBy.some(r => r.userId === user.id);
+        if (alreadyRead) return log;
+        
+        const newReadBy = [...(log.readBy || []), {
+          userId: user.id,
+          username: user.displayName || user.username,
+          readAt: new Date().toISOString()
+        }];
+        return { ...log, readBy: newReadBy };
+      })
+    );
+
+    fetch('/api/logs/read-all', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          showAlertModal({
+            title: 'สำเร็จ',
+            message: 'ทำเครื่องหมายบันทึกทั้งหมดเป็นอ่านแล้วเรียบร้อย',
+            variant: 'success'
+          });
+        }
+      })
+      .catch(err => console.error('Error marking all logs as read:', err));
   };
 
   const handleLogout = () => {
@@ -550,18 +716,25 @@ export default function App() {
   };
 
   const handleDeleteLog = (id) => {
-    if (!window.confirm('คุณต้องการลบบันทึกข้อมูลรายการนี้ใช่หรือไม่?')) return;
-
-    fetch(`/api/logs/${id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => {
-        if (res.ok) {
-          setLogs(logs.filter(log => log.id !== id));
-        }
-      })
-      .catch(err => console.error('Error deleting log:', err));
+    showConfirmModal({
+      title: 'ยืนยันการลบบันทึกข้อมูล',
+      message: 'คุณแน่ใจหรือไม่ว่าต้องการลบบันทึกข้อมูลรายการนี้? การดำเนินการนี้จะลบไฟล์ที่เกี่ยวข้องและไม่สามารถกู้คืนข้อมูลกลับมาได้',
+      confirmText: 'ลบบันทึก',
+      cancelText: 'ยกเลิก',
+      variant: 'danger',
+      onConfirm: () => {
+        fetch(`/api/logs/${id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` }
+        })
+          .then(res => {
+            if (res.ok) {
+              setLogs(logs.filter(log => log.id !== id));
+            }
+          })
+          .catch(err => console.error('Error deleting log:', err));
+      }
+    });
   };
   
   const handleCopyValue = (value, e) => {
@@ -1051,7 +1224,18 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
             />
           </div>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {logs.some(log => user && log.readBy && !log.readBy.some(r => r.userId === user.id)) && (
+              <button 
+                onClick={markAllAsRead} 
+                className="btn-secondary btn-mark-all-read" 
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '10px', border: '1px dashed rgba(16, 185, 129, 0.4)', color: 'var(--neon-green)' }}
+              >
+                <Check className="w-4 h-4 text-neon-green" />
+                <span>อ่านทั้งหมดแล้ว</span>
+              </button>
+            )}
+
             <button onClick={() => setShowSettingsModal(true)} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '10px' }}>
               <Shield className="w-5 h-5 text-neon-cyan" />
               <span>ตั้งค่าแท็ก Discord</span>
@@ -1084,158 +1268,247 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
         </section>
 
         {/* FEED / LIST OF LOGS */}
-        <section className="logs-feed">
-          {loading ? (
-            <div className="loading-state">กำลังโหลดข้อมูล...</div>
-          ) : logs.length === 0 ? (
+        <div className="feed-container" style={{ position: 'relative', width: '100%' }}>
+          {loading && (
+            <div className="feed-loader-bar">
+              <div className="feed-loader-progress"></div>
+            </div>
+          )}
+
+          {logs.length === 0 && !loading ? (
             <div className="empty-state">ไม่พบประวัติการบันทึกข้อมูลตามที่ระบุ</div>
+          ) : logs.length === 0 && loading ? (
+            <div className="loading-state">กำลังโหลดข้อมูล...</div>
           ) : (
-            logs.map(log => {
-              const styles = getCategoryStyles(log.category);
-              const { description, playerFields, otherFields } = getFormattedFields(log);
-              const ip = extractIpAddress(log, playerFields, otherFields);
-              const ipInfo = ip ? ipCountries[ip] : null;
-              const isForeignIP = ipInfo && ipInfo.countryCode && ipInfo.countryCode !== 'TH';
+            <section className={`logs-feed ${loading ? 'feed-loading' : ''}`}>
+              {logs.map((log, idx) => {
+                const styles = getCategoryStyles(log.category);
+                const { description, playerFields, otherFields } = getFormattedFields(log);
+                const ip = extractIpAddress(log, playerFields, otherFields);
+                const ipInfo = ip ? ipCountries[ip] : null;
+                const isForeignIP = ipInfo && ipInfo.countryCode && ipInfo.countryCode !== 'TH';
+                const isFakeInterRegister = log.category.toLowerCase() === 'inter_register' && ipInfo && ipInfo.countryCode === 'TH';
+                
+                const isUnread = user && log.readBy && !log.readBy.some(r => r.userId === user.id);
 
-              // Format date & time
-              const logDate = new Date(log.created_at);
-              const day = String(logDate.getDate()).padStart(2, '0');
-              const month = String(logDate.getMonth() + 1).padStart(2, '0');
-              const year = logDate.getFullYear();
-              const dateStr = `${day}/${month}/${year}`;
+                // Format date & time
+                const logDate = new Date(log.created_at);
+                const day = String(logDate.getDate()).padStart(2, '0');
+                const month = String(logDate.getMonth() + 1).padStart(2, '0');
+                const year = logDate.getFullYear();
+                const dateStr = `${day}/${month}/${year}`;
 
-              const hours = String(logDate.getHours()).padStart(2, '0');
-              const minutes = String(logDate.getMinutes()).padStart(2, '0');
-              const seconds = String(logDate.getSeconds()).padStart(2, '0');
-              const timeStr = `${hours}:${minutes}:${seconds}`;
+                const hours = String(logDate.getHours()).padStart(2, '0');
+                const minutes = String(logDate.getMinutes()).padStart(2, '0');
+                const seconds = String(logDate.getSeconds()).padStart(2, '0');
+                const timeStr = `${hours}:${minutes}:${seconds}`;
 
-              return (
-                <div 
-                  key={log.id} 
-                  className="discord-message"
-                >
-                  {/* MESSAGE HEADER */}
-                  <div className="discord-message-header">
-                    <div className="admin-avatar">
-                      <Shield className="w-3.5 h-3.5 text-white" />
-                    </div>
-                    <div className="admin-meta">
-                      <span className="admin-name">แอดมิน: <strong>{log.created_by}</strong></span>
-                      <span className="message-timestamp">
-                        {new Date(log.created_at).toLocaleString('th-TH')}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* DISCORD EMBED */}
-                  <div className="discord-embed" style={{ borderLeftColor: styles.text }}>
-                    {log.category.toLowerCase() === 'inter_register' && isForeignIP && (
-                      <div className="foreign-ip-verified-badge" title={`IP: ${ip} (Country: ${ipInfo.country})`}>
-                        <Globe className="w-3.5 h-3.5 mr-1 text-emerald-400 animate-pulse" />
-                        <span>ต่างประเทศจริง ({ipInfo.country})</span>
-                      </div>
-                    )}
-                    
-                    <div className="embed-content-wrapper">
-                      <div className="embed-left-side">
-                        {/* EMBED HEADER */}
-                        <div className="embed-header">
-                          <div className="embed-badge-icon" style={{ color: styles.text }}>
-                            {styles.icon}
-                          </div>
-                          <span className="embed-category-title">{log.category.toUpperCase()}</span>
+                return (
+                  <div 
+                    key={log.id} 
+                    className={`discord-message ${isUnread ? 'unread-message' : ''}`}
+                    style={{ '--card-index': Math.min(idx, 8) }}
+                    onMouseEnter={() => {
+                      if (isUnread) {
+                        markAsRead(log.id);
+                      }
+                    }}
+                  >
+                    {/* MESSAGE HEADER */}
+                    <div className="discord-message-header" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div className="admin-avatar">
+                          <Shield className="w-3.5 h-3.5 text-white" />
                         </div>
-
-                        {/* EMBED DESCRIPTION */}
-                        {description && (
-                          <div className="embed-description">
-                            {log.category.toLowerCase() === 'fine' ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold', color: '#eab308' }}>
-                                <span>💸 ปรับ : {description.replace(/^[🪙💸💰\s]*ปรับ\s*[:：]?\s*/gi, '').replace(/[🪙💸💰\s]*$/gi, '').trim()} 💸</span>
-                              </div>
-                            ) : (
-                              <RichDescription text={description} />
-                            )}
-                          </div>
-                        )}
-
-                        {/* EMBED MAP FOR INTER REGISTER */}
-                        {log.category.toLowerCase() === 'inter_register' && ipInfo && ipInfo.lat && ipInfo.lon && (
-                          <div className="embed-map-container">
-                            <div className="embed-map-header">
-                              <Globe className="w-3.5 h-3.5 mr-1 text-neon-cyan" />
-                              <span>Verified IP Geo-Location: {ipInfo.city ? `${ipInfo.city}, ` : ''}{ipInfo.country}</span>
-                            </div>
-                            <div className="embed-map-wrapper">
-                              <img 
-                                src={`https://static-maps.yandex.ru/1.x/?ll=${ipInfo.lon},${ipInfo.lat}&z=7&l=map&size=500,280&pt=${ipInfo.lon},${ipInfo.lat},pm2gnl&lang=en_US`} 
-                                alt="Player Location Map" 
-                                className="embed-map-img" 
-                              />
-                            </div>
-                          </div>
-                        )}
+                        <div className="admin-meta">
+                          <span className="admin-name">แอดมิน: <strong>{log.created_by}</strong></span>
+                          <span className="message-timestamp">
+                            {new Date(log.created_at).toLocaleString('th-TH')}
+                          </span>
+                        </div>
                       </div>
+
+                      {isUnread && (
+                        <div className="unread-pulse-badge">
+                          <span className="unread-pulse-dot"></span>
+                          <span>ใหม่</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* EMBED FIELDS */}
-                    <div className="embed-fields">
-                      {/* Other Fields */}
-                      {otherFields.map((field, idx) => {
-                        const isCopied = copiedValue === field.value;
-                        const hasUrl = /https?:\/\//.test(field.value);
-                        return (
-                          <div key={idx} className="embed-field-box">
-                            <div className="field-label">{field.key.toUpperCase()}</div>
-                            <div 
-                              className={`field-value copyable-value ${isCopied ? 'copied' : ''}`}
-                              onClick={(e) => handleCopyValue(field.value, e)}
-                              title="คลิกเพื่อคัดลอกเฉพาะข้อมูลส่วนนี้"
-                            >
-                              {hasUrl ? <RichDescription text={field.value} /> : field.value}
-                              {isCopied && <span className="copy-indicator">คัดลอกแล้ว!</span>}
+                    {/* DISCORD EMBED */}
+                    <div className="discord-embed" style={{ borderLeftColor: styles.text }}>
+                      {log.category.toLowerCase() === 'inter_register' && (
+                        <>
+                          {isForeignIP && (
+                            <div className="foreign-ip-verified-badge" title={`IP: ${ip} (Country: ${ipInfo.country}, City: ${ipInfo.city})`}>
+                              <Check className="w-3.5 h-3.5 mr-1 text-emerald-400" />
+                              <span>{ipInfo.country}</span>
+                            </div>
+                          )}
+                          {isFakeInterRegister && (
+                            <div className="foreign-ip-verified-badge fake-info" title={`IP: ${ip} (Country: ${ipInfo.country}, City: ${ipInfo.city})`}>
+                              <X className="w-3.5 h-3.5 mr-1 text-red-500" />
+                              <span>{ipInfo.country} (ปลอม)</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      
+                      <div className="embed-content-wrapper">
+                        <div className="embed-left-side">
+                          {/* EMBED HEADER */}
+                          <div className="embed-header">
+                            <div className="embed-badge-icon" style={{ color: styles.text }}>
+                              {styles.icon}
+                            </div>
+                            <span className="embed-category-title">{log.category.toUpperCase()}</span>
+                          </div>
+
+                          {/* EMBED DESCRIPTION */}
+                          {description && (
+                            <div className="embed-description">
+                              {log.category.toLowerCase() === 'fine' ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold', color: '#eab308' }}>
+                                  <span>💸 ปรับ : {description.replace(/^[🪙💸💰\s]*ปรับ\s*[:：]?\s*/gi, '').replace(/[🪙💸💰\s]*$/gi, '').trim()} 💸</span>
+                                </div>
+                              ) : (
+                                <RichDescription text={description} />
+                              )}
+                            </div>
+                          )}
+
+                          {/* EMBED MAP FOR INTER REGISTER */}
+                          {log.category.toLowerCase() === 'inter_register' && ipInfo && ipInfo.lat && ipInfo.lon && (
+                            <div className="embed-map-container">
+                              <div className="embed-map-header">
+                                <Globe className="w-3.5 h-3.5 mr-1 text-neon-cyan" />
+                                <span>Verified IP Geo-Location: {ipInfo.city ? `${ipInfo.city}, ` : ''}{ipInfo.country}</span>
+                              </div>
+                              <div className="embed-map-wrapper">
+                                <img 
+                                  src={`https://static-maps.yandex.ru/1.x/?ll=${ipInfo.lon},${ipInfo.lat}&z=7&l=map&size=500,280&pt=${ipInfo.lon},${ipInfo.lat},pm2gnl&lang=en_US`} 
+                                  alt="Player Location Map" 
+                                  className="embed-map-img" 
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* EMBED FIELDS */}
+                      <div className="embed-fields">
+                        {/* Other Fields */}
+                        {otherFields.map((field, idx) => {
+                          const isCopied = copiedValue === field.value;
+                          const hasUrl = /https?:\/\//.test(field.value);
+                          return (
+                            <div key={idx} className="embed-field-box">
+                              <div className="field-label">{field.key.toUpperCase()}</div>
+                              <div 
+                                className={`field-value copyable-value ${isCopied ? 'copied' : ''}`}
+                                onClick={(e) => handleCopyValue(field.value, e)}
+                                title="คลิกเพื่อคัดลอกเฉพาะข้อมูลส่วนนี้"
+                              >
+                                {hasUrl ? <RichDescription text={field.value} /> : field.value}
+                                {isCopied && <span className="copy-indicator">คัดลอกแล้ว!</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Player Info Grouped */}
+                        {playerFields.filter(f => !f.isReporter).length > 0 && (
+                          <div className="embed-field-box player-info-group">
+                            <div className="player-info-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                              <div className="field-label" style={{ marginBottom: 0 }}>PLAYER INFORMATION</div>
+                              <button 
+                                className={`btn-copy-player-group ${copiedPlayerGroupId === log.id ? 'copied' : ''}`}
+                                onClick={(e) => handleCopyPlayerGroup(playerFields.filter(f => !f.isReporter), log.id, e)}
+                                title="คัดลอกข้อมูลผู้เล่นทั้งหมดในกรอบนี้"
+                              >
+                                {copiedPlayerGroupId === log.id ? (
+                                  <>
+                                    <Check className="w-3 h-3 mr-1" />
+                                    <span>คัดลอกแล้ว!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3 h-3 mr-1" />
+                                    <span>คัดลอกทั้งหมด</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                            <div className="player-info-list">
+                              {playerFields.filter(f => !f.isReporter).map((field, idx) => {
+                                const isCopied = copiedValue === field.value;
+                                return (
+                                  <div key={idx} className="player-info-row">
+                                    <span className="player-info-key">{field.key}:</span>
+                                    <span 
+                                      className={`player-info-value copyable-value ${isCopied ? 'copied' : ''}`}
+                                      onClick={(e) => handleCopyValue(field.value, e)}
+                                      title="คลิกเพื่อคัดลอกเฉพาะข้อมูลส่วนนี้"
+                                    >
+                                      {field.value}
+                                      {isCopied && <span className="copy-indicator">คัดลอกแล้ว!</span>}
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
-                        );
-                      })}
+                        )}
 
-                      {/* Player Info Grouped */}
-                      {playerFields.filter(f => !f.isReporter).length > 0 && (
-                        <div className="embed-field-box player-info-group">
-                          <div className="player-info-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <div className="field-label" style={{ marginBottom: 0 }}>PLAYER INFORMATION</div>
-                            <button 
-                              className={`btn-copy-player-group ${copiedPlayerGroupId === log.id ? 'copied' : ''}`}
-                              onClick={(e) => handleCopyPlayerGroup(playerFields.filter(f => !f.isReporter), log.id, e)}
-                              title="คัดลอกข้อมูลผู้เล่นทั้งหมดในกรอบนี้"
+                        {/* Date & Time Grid */}
+                        <div className="embed-grid-cols-2">
+                          <div className="embed-field-box">
+                            <div className="field-label">DATE (LOCAL)</div>
+                            <div 
+                              className={`field-value copyable-value ${copiedValue === dateStr ? 'copied' : ''}`}
+                              onClick={(e) => handleCopyValue(dateStr, e)}
+                              title="คลิกเพื่อคัดลอกวันที่"
                             >
-                              {copiedPlayerGroupId === log.id ? (
-                                <>
-                                  <Check className="w-3 h-3 mr-1" />
-                                  <span>คัดลอกแล้ว!</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3 h-3 mr-1" />
-                                  <span>คัดลอกทั้งหมด</span>
-                                </>
-                              )}
-                            </button>
+                              {dateStr}
+                              {copiedValue === dateStr && <span className="copy-indicator">คัดลอกแล้ว!</span>}
+                            </div>
                           </div>
-                          <div className="player-info-list">
-                            {playerFields.filter(f => !f.isReporter).map((field, idx) => {
-                              const isCopied = copiedValue === field.value;
+                          <div className="embed-field-box">
+                            <div className="field-label">TIME (LOCAL)</div>
+                            <div 
+                              className={`field-value copyable-value ${copiedValue === timeStr ? 'copied' : ''}`}
+                              onClick={(e) => handleCopyValue(timeStr, e)}
+                              title="คลิกเพื่อคัดลอกเวลา"
+                            >
+                              {timeStr}
+                              {copiedValue === timeStr && <span className="copy-indicator">คัดลอกแล้ว!</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* IMAGES GRID */}
+                      {log.attachments && log.attachments.length > 0 && (
+                        <div className="embed-attachments">
+                          <div className="embed-attachments-title">ไฟล์ภาพหลักฐาน:</div>
+                          <div className="embed-images-grid">
+                            {log.attachments.map((file, idx) => {
+                              const imageUrl = file.startsWith('http') ? file : `/uploads/${file}`;
                               return (
-                                <div key={idx} className="player-info-row">
-                                  <span className="player-info-key">{field.key}:</span>
-                                  <span 
-                                    className={`player-info-value copyable-value ${isCopied ? 'copied' : ''}`}
-                                    onClick={(e) => handleCopyValue(field.value, e)}
-                                    title="คลิกเพื่อคัดลอกเฉพาะข้อมูลส่วนนี้"
-                                  >
-                                    {field.value}
-                                    {isCopied && <span className="copy-indicator">คัดลอกแล้ว!</span>}
-                                  </span>
+                                <div 
+                                  key={idx} 
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setPreviewImage(imageUrl);
+                                  }}
+                                  className="embed-image-card"
+                                >
+                                  <img src={imageUrl} alt="evidence-thumb" className="embed-small-image" />
+                                  <div className="embed-image-card-overlay">
+                                    <ExternalLink className="w-4 h-4 text-white" />
+                                  </div>
                                 </div>
                               );
                             })}
@@ -1243,172 +1516,142 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
                         </div>
                       )}
 
-                      {/* Date & Time Grid */}
-                      <div className="embed-grid-cols-2">
-                        <div className="embed-field-box">
-                          <div className="field-label">DATE (LOCAL)</div>
-                          <div 
-                            className={`field-value copyable-value ${copiedValue === dateStr ? 'copied' : ''}`}
-                            onClick={(e) => handleCopyValue(dateStr, e)}
-                            title="คลิกเพื่อคัดลอกวันที่"
-                          >
-                            {dateStr}
-                            {copiedValue === dateStr && <span className="copy-indicator">คัดลอกแล้ว!</span>}
+                      {/* LINKS */}
+                      {log.links && log.links.length > 0 && (
+                        <div className="embed-links">
+                          <div className="embed-attachments-title">ลิงก์แนบ:</div>
+                          <div className="embed-links-row">
+                            {log.links.map((link, idx) => {
+                              const videoInfo = getVideoInfo(link);
+                              if (videoInfo) {
+                                return (
+                                  <button 
+                                    key={idx} 
+                                    onClick={() => setPreviewVideo(videoInfo)}
+                                    className="embed-btn-link video-link"
+                                    type="button"
+                                  >
+                                    <Play className="w-3 h-3 mr-1" />
+                                    {link.length > 35 ? link.substring(0, 35) + '...' : link}
+                                  </button>
+                                );
+                              }
+                              return (
+                                <a 
+                                  key={idx} 
+                                  href={link} 
+                                  target="_blank" 
+                                  rel="noreferrer" 
+                                  className="embed-btn-link"
+                                >
+                                  <ExternalLink className="w-3 h-3 mr-1" />
+                                  {link.length > 35 ? link.substring(0, 35) + '...' : link}
+                                </a>
+                              );
+                            })}
                           </div>
                         </div>
-                        <div className="embed-field-box">
-                          <div className="field-label">TIME (LOCAL)</div>
-                          <div 
-                            className={`field-value copyable-value ${copiedValue === timeStr ? 'copied' : ''}`}
-                            onClick={(e) => handleCopyValue(timeStr, e)}
-                            title="คลิกเพื่อคัดลอกเวลา"
-                          >
-                            {timeStr}
-                            {copiedValue === timeStr && <span className="copy-indicator">คัดลอกแล้ว!</span>}
-                          </div>
+                      )}
+
+                      {/* READ RECEIPTS FOOTER */}
+                      <div className="embed-read-status">
+                        <span className="read-by-label">อ่านแล้วโดย:</span>
+                        <div className="read-by-users">
+                          {log.readBy && log.readBy.length > 0 ? (
+                            log.readBy.map((r, idx) => {
+                              const isMe = user && r.userId === user.id;
+                              return (
+                                <span 
+                                  key={idx} 
+                                  className={`read-by-user-badge ${isMe ? 'is-me' : ''}`}
+                                  title={`อ่านเมื่อ: ${new Date(r.readAt).toLocaleString('th-TH')}`}
+                                >
+                                  👤 {r.username}
+                                </span>
+                              );
+                            })
+                          ) : (
+                            <span className="read-by-none">ยังไม่มีผู้อ่าน</span>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    {/* IMAGES GRID */}
-                    {log.attachments && log.attachments.length > 0 && (
-                      <div className="embed-attachments">
-                        <div className="embed-attachments-title">ไฟล์ภาพหลักฐาน:</div>
-                        <div className="embed-images-grid">
-                          {log.attachments.map((file, idx) => {
-                            const imageUrl = file.startsWith('http') ? file : `/uploads/${file}`;
-                            return (
-                              <div 
-                                key={idx} 
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  setPreviewImage(imageUrl);
-                                }}
-                                className="embed-image-card"
-                              >
-                                <img src={imageUrl} alt="evidence-thumb" className="embed-small-image" />
-                                <div className="embed-image-card-overlay">
-                                  <ExternalLink className="w-4 h-4 text-white" />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    {/* CARD ACTIONS */}
+                    <div className="discord-message-actions">
+                      {isAnnouncementCategory(log.category) ? (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button 
+                            onClick={() => copyToDiscord(log, false)} 
+                            className={`btn-action-copy ${copiedId === `${log.id}-log` ? 'success' : ''}`}
+                          >
+                            {copiedId === `${log.id}-log` ? (
+                              <>
+                                <Check className="w-4 h-4 mr-1 text-green-500" />
+                                คัดลอก Log สำเร็จ!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-4 h-4 mr-1" />
+                                คัดลอก Log
+                              </>
+                            )}
+                          </button>
 
-                    {/* LINKS */}
-                    {log.links && log.links.length > 0 && (
-                      <div className="embed-links">
-                        <div className="embed-attachments-title">ลิงก์แนบ:</div>
-                        <div className="embed-links-row">
-                          {log.links.map((link, idx) => {
-                            const videoInfo = getVideoInfo(link);
-                            if (videoInfo) {
-                              return (
-                                <button 
-                                  key={idx} 
-                                  onClick={() => setPreviewVideo(videoInfo)}
-                                  className="embed-btn-link video-link"
-                                  type="button"
-                                >
-                                  <Play className="w-3 h-3 mr-1" />
-                                  {link.length > 35 ? link.substring(0, 35) + '...' : link}
-                                </button>
-                              );
-                            }
-                            return (
-                              <a 
-                                key={idx} 
-                                href={link} 
-                                target="_blank" 
-                                rel="noreferrer" 
-                                className="embed-btn-link"
-                              >
-                                <ExternalLink className="w-3 h-3 mr-1" />
-                                {link.length > 35 ? link.substring(0, 35) + '...' : link}
-                              </a>
-                            );
-                          })}
+                          <button 
+                            onClick={() => copyToDiscord(log, true)} 
+                            className={`btn-action-copy btn-announcement ${copiedId === `${log.id}-ann` ? 'success' : ''}`}
+                          >
+                            {copiedId === `${log.id}-ann` ? (
+                              <>
+                                <Check className="w-4 h-4 mr-1 text-green-500" />
+                                คัดลอกประกาศสำเร็จ!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-4 h-4 mr-1" />
+                                คัดลอกประกาศ
+                              </>
+                            )}
+                          </button>
                         </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* CARD ACTIONS */}
-                  <div className="discord-message-actions">
-                    {isAnnouncementCategory(log.category) ? (
-                      <div style={{ display: 'flex', gap: '8px' }}>
+                      ) : (
                         <button 
                           onClick={() => copyToDiscord(log, false)} 
-                          className={`btn-action-copy ${copiedId === `${log.id}-log` ? 'success' : ''}`}
+                          className={`btn-action-copy ${copiedId === log.id ? 'success' : ''}`}
                         >
-                          {copiedId === `${log.id}-log` ? (
+                          {copiedId === log.id ? (
                             <>
                               <Check className="w-4 h-4 mr-1 text-green-500" />
-                              คัดลอก Log สำเร็จ!
+                              คัดลอกสำเร็จ!
                             </>
                           ) : (
                             <>
                               <Copy className="w-4 h-4 mr-1" />
-                              คัดลอก Log
+                              คัดลอกใส่ Discord
                             </>
                           )}
                         </button>
+                      )}
 
-                        <button 
-                          onClick={() => copyToDiscord(log, true)} 
-                          className={`btn-action-copy btn-announcement ${copiedId === `${log.id}-ann` ? 'success' : ''}`}
-                        >
-                          {copiedId === `${log.id}-ann` ? (
-                            <>
-                              <Check className="w-4 h-4 mr-1 text-green-500" />
-                              คัดลอกประกาศสำเร็จ!
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-4 h-4 mr-1" />
-                              คัดลอกประกาศ
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    ) : (
                       <button 
-                        onClick={() => copyToDiscord(log, false)} 
-                        className={`btn-action-copy ${copiedId === log.id ? 'success' : ''}`}
+                        onClick={() => handleDeleteLog(log.id)} 
+                        className="btn-action-delete"
+                        title="ลบ log นี้"
                       >
-                        {copiedId === log.id ? (
-                          <>
-                            <Check className="w-4 h-4 mr-1 text-green-500" />
-                            คัดลอกสำเร็จ!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4 mr-1" />
-                            คัดลอกใส่ Discord
-                          </>
-                        )}
+                        <Trash2 className="w-4 h-4" />
                       </button>
-                    )}
-
-                    <button 
-                      onClick={() => handleDeleteLog(log.id)} 
-                      className="btn-action-delete"
-                      title="ลบ log นี้"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </section>
           )}
-        </section>
+        </div>
       </main>
 
       {/* ADD MANUAL ENTRY MODAL */}
-      {showAddModal && (
+      {showAddModal && createPortal(
         <div className="modal-backdrop">
           <div className="modal-content">
             <div className="modal-header">
@@ -1487,11 +1730,12 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* SETTINGS MODAL */}
-      {showSettingsModal && (
+      {showSettingsModal && createPortal(
         <div className="modal-backdrop">
           <div className="modal-content">
             <div className="modal-header">
@@ -1554,21 +1798,23 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* IMAGE PREVIEW MODAL */}
-      {previewImage && (
+      {previewImage && createPortal(
         <div className="image-preview-modal-backdrop" onClick={() => setPreviewImage(null)}>
           <div className="image-preview-modal-content" onClick={(e) => e.stopPropagation()}>
             <button className="image-preview-modal-close" onClick={() => setPreviewImage(null)}>&times;</button>
             <img src={previewImage} alt="Preview" className="image-preview-modal-img" />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* VIDEO PREVIEW MODAL */}
-      {previewVideo && (
+      {previewVideo && createPortal(
         <div className="image-preview-modal-backdrop" onClick={() => setPreviewVideo(null)}>
           <div className="image-preview-modal-content video-preview-container" onClick={(e) => e.stopPropagation()}>
             <button className="image-preview-modal-close" onClick={() => setPreviewVideo(null)}>&times;</button>
@@ -1586,7 +1832,41 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* CUSTOM DIALOG MODAL (PORTAL) */}
+      {modalConfig.show && createPortal(
+        <div className="dialog-modal-backdrop" onClick={modalConfig.onCancel}>
+          <div className={`dialog-modal-content ${modalConfig.variant}`} onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-modal-header">
+              <div className="dialog-icon-wrapper">
+                {modalConfig.variant === 'danger' && <Trash2 className="w-6 h-6 text-neon-red" />}
+                {modalConfig.variant === 'warning' && <AlertTriangle className="w-6 h-6 text-neon-amber" />}
+                {modalConfig.variant === 'success' && <Check className="w-6 h-6 text-neon-green" />}
+                {modalConfig.variant === 'info' && <Info className="w-6 h-6 text-neon-cyan" />}
+              </div>
+              <h3>{modalConfig.title}</h3>
+            </div>
+            
+            <div className="dialog-modal-body">
+              <p>{modalConfig.message}</p>
+            </div>
+            
+            <div className="dialog-modal-footer">
+              {modalConfig.type === 'confirm' && (
+                <button type="button" className="btn-dialog-cancel" onClick={modalConfig.onCancel}>
+                  {modalConfig.cancelText}
+                </button>
+              )}
+              <button type="button" className={`btn-dialog-confirm ${modalConfig.variant}`} onClick={modalConfig.onConfirm}>
+                {modalConfig.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

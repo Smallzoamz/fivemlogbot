@@ -60,15 +60,16 @@ const LOG_CHANNELS_CONFIG = [
 
 // Helper to send logs to Discord Log Channel if configured
 async function sendToLogChannel(guild, embed) {
-  if (!LOG_CHANNEL_ID) return;
+  if (!LOG_CHANNEL_ID) return null;
   try {
     const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID) || await guild.channels.fetch(LOG_CHANNEL_ID);
     if (logChannel) {
-      await logChannel.send({ embeds: [embed] });
+      return await logChannel.send({ embeds: [embed] });
     }
   } catch (err) {
     console.error('Failed to send to Discord log channel:', err.message);
   }
+  return null;
 }
 
 // Helper: Resolve category from channel name
@@ -95,8 +96,7 @@ async function sendToCategoryLog(guild, category, embed) {
     const parentCategory = guild.channels.cache.get(LOGS_PARENT_CATEGORY_ID) || await guild.channels.fetch(LOGS_PARENT_CATEGORY_ID).catch(() => null);
     if (!parentCategory) {
       // Fallback
-      await sendToLogChannel(guild, embed);
-      return;
+      return await sendToLogChannel(guild, embed);
     }
 
     const config = LOG_CHANNELS_CONFIG.find(c => c.key === category);
@@ -112,13 +112,16 @@ async function sendToCategoryLog(guild, category, embed) {
     }
 
     if (channel) {
-      await channel.send({ embeds: [embed] });
+      return await channel.send({ embeds: [embed] });
     }
   } catch (err) {
     console.error(`Failed to send category log for ${category}:`, err.message);
-    await sendToLogChannel(guild, embed);
+    return await sendToLogChannel(guild, embed);
   }
+  return null;
 }
+
+
 
 // Helper: Send bot error stack trace to Discord errors channel
 async function sendBotErrorLog(error) {
@@ -747,11 +750,33 @@ client.on('messageCreate', async (message) => {
           category: category
         });
 
-        // React with checkmark to signify successful upload to backend database/website
-        await message.react('✅').catch(err => console.error('Failed to react with checkmark:', err.message));
-
         // Get the resolved category from the backend response
         const resolvedCategory = response.data?.category?.toLowerCase() || '';
+
+        // Check for IP and GeoIP fake registration check
+        let isFakeRegistration = false;
+        let resolvedCountry = '';
+        if (resolvedCategory === 'inter_register' || resolvedCategory.includes('inter') || resolvedCategory.includes('ต่างประเทศ')) {
+          const ipRegex = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/;
+          const ipMatch = message.content.match(ipRegex);
+          if (ipMatch) {
+            const extractedIp = ipMatch[0];
+            try {
+              const geoResponse = await axios.get(`https://freeipapi.com/api/json/${extractedIp}`, { timeout: 3000 });
+              if (geoResponse.data && geoResponse.data.countryCode) {
+                resolvedCountry = geoResponse.data.countryName || geoResponse.data.countryCode;
+                if (geoResponse.data.countryCode === 'TH') {
+                  isFakeRegistration = true;
+                }
+              }
+            } catch (err) {
+              console.error('GeoIP lookup error in bot validation:', err.message);
+            }
+          }
+        }
+
+        // React with checkmark to signify successful upload to backend database/website
+        await message.react('✅').catch(err => console.error('Failed to react with checkmark:', err.message));
 
         // Add additional emoji reactions based on category
         if (resolvedCategory === 'ban' || resolvedCategory.includes('red') || resolvedCategory.includes('แดง')) {
@@ -765,17 +790,29 @@ client.on('messageCreate', async (message) => {
         } else if (resolvedCategory === 'inter_register' || resolvedCategory.includes('inter') || resolvedCategory.includes('ต่างประเทศ')) {
           await message.react('✈️').catch(err => {});
           await message.react('🌐').catch(err => {});
+          if (isFakeRegistration) {
+            await message.react('❌').catch(err => {});
+          }
         } else if (resolvedCategory === 'fine' || resolvedCategory.includes('fine') || resolvedCategory.includes('ปรับ')) {
           await message.react('💸').catch(err => {});
         }
 
-        // Send Log to Discord Log Channel if it is evidence (images or links)
-        if (category === 'evidence') {
+        // Send Log to Discord Log Channel if it is evidence (images or links) OR if it is an international registration
+        if (category === 'evidence' || resolvedCategory === 'inter_register') {
+          const logCategory = getCategoryFromChannelName(channel.name);
+          const embedTitle = isFakeRegistration 
+            ? '🚨 [FAKE IP / ข้อมูลปลอม] Evidence Submitted' 
+            : '📷 Evidence Submitted / แนบหลักฐานใหม่';
+
           const evidenceEmbed = new EmbedBuilder()
-            .setTitle('📷 Evidence Submitted / แนบหลักฐานใหม่')
+            .setTitle(embedTitle)
             .setDescription(`**ผู้ส่ง:** ${message.author.username} (ห้อง <#${channel.id}>)\n\n**ข้อความ:** ${message.content || '*ไม่มี*'}`)
-            .setColor(0xa855f7)
+            .setColor(isFakeRegistration ? 0xFF0000 : 0xa855f7)
             .setTimestamp();
+
+          if (isFakeRegistration && resolvedCountry) {
+            evidenceEmbed.addFields({ name: 'ตรวจสอบข้อมูลประเทศ (IP GeoIP)', value: `❌ **ตรวจพบ IP อยู่ประเทศไทย (${resolvedCountry})**` });
+          }
 
           if (localAttachments.length > 0) {
             const fileLinks = localAttachments.map((file, idx) => {
@@ -790,9 +827,11 @@ client.on('messageCreate', async (message) => {
             const linkList = extractedLinks.map((link, idx) => `[ลิงก์อ้างอิง ${String(idx + 1).padStart(2, '0')}](${link})`);
             evidenceEmbed.addFields({ name: 'ลิงก์ที่แนบ', value: linkList.join('\n') });
           }
-          await sendToCategoryLog(message.guild, 'evidence', evidenceEmbed);
+          const logMsg = await sendToCategoryLog(message.guild, logCategory, evidenceEmbed);
+          if (logMsg && isFakeRegistration) {
+            await logMsg.react('❌').catch(err => {});
+          }
         }
-      }
 
     } catch (error) {
       console.error('Error logging message in ticket channel:', error.response?.data || error.message);

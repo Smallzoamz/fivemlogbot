@@ -70,14 +70,16 @@
 [2026-06-14 01:45] | File: frontend/src/App.jsx | Line: 966 | Keyword: Actual-Stats-Overhaul | Status: Success | Change: Updated the statistics computation and UI tiles at the top of the dashboard to display counts for all 6 overhauled categories (Total, Fine, Warning, Orange, Ban, Inter Register, Evidence) with their matching colors and Thai titles.
 [2026-06-14 01:50] | File: bot/bot.js | Line: 48 | Keyword: Bot-Logging-Overhaul | Status: Success | Change: Integrated logs category separation under Discord parent category 1515425441610203146, including startup auto-creation of 8 log channels, log routing based on ticket category, process-wide error reporting to 🤖-bot-errors, ticket setup auto-injection, and 5-second auto-clearing for bot interaction replies.
 [2026-06-14 01:55] | File: bot/bot.js | Line: 167 | Keyword: Button-Ticket-Opening | Status: Success | Change: Revamped the ticket opening process to select the category directly from the outer support channel setup panel. Added 6 direct category buttons (excluding the custom option), implemented a centralized creator function, and updated the backend POST /bot/tickets API to register category on creation.
-
-
-
-
-
-
-
-
-
-
-
+[2026-06-14 02:00] | File: frontend/src/App.jsx | Line: 317 | Keyword: Search-Debouncing | Status: Success | Change: Implemented a 300ms debouncing mechanism on the search query input to prevent rapid, overlapping backend API database queries on every keystroke, which improves network efficiency and prevents UI stutter.
+[2026-06-14 02:00] | File: frontend/src/App.jsx | Line: 1096 | Keyword: Smooth-Loading-UX | Status: Success | Change: Refactored logs feed rendering to keep card grid visible when fetching new logs, transitioning its opacity, and displaying a sleek animated top progress bar instead of completely wiping the feed container with a loading text placeholder.
+[2026-06-14 02:00] | File: frontend/src/App.css | Line: 522 | Keyword: Card-Entry-Animations | Status: Success | Change: Added cardFadeIn keyframe animation with 3D-like scale and translate effects, and bound it to card mounting with dynamic staggered index delays (`--card-index`) to achieve a cascaded flow entry effect.
+[2026-06-14 02:05] | File: frontend/src/App.jsx | Line: 341 | Keyword: Global-Modal-Interceptor | Status: Success | Change: Exposed Promise-based window.showAlert and window.showConfirm hook APIs inside App.jsx, allowing future integrations or unrefactored code blocks to trigger beautiful custom modals via simple asynchronous calls.
+[2026-06-14 02:05] | File: frontend/src/App.jsx | Line: 1522 | Keyword: React-Portals-Modals | Status: Success | Change: Wrapped all existing inline modal frames (Add Log, settings, image preview, video preview) in createPortal, rendering them at the document.body level to enforce correct stacking context overlays.
+[2026-06-14 02:05] | File: frontend/src/App.css | Line: 1350 | Keyword: Cyber-Modal-Styles | Status: Success | Change: Styled Custom Dialog Modals with glassmorphism backdrops, glow borders matching alert severity variants (danger, warning, success, info), and animated scale/fade transitions.
+[2026-06-14 02:10] | File: backend/server.js | Line: 325 | Keyword: Backend-Read-Receipts | Status: Success | Change: Added POST /api/logs/:id/read and POST /api/logs/read-all endpoints, and updated GET /api/logs to retrieve and attach admin read records from log_read_states table with proper try-catch error safety.
+[2026-06-14 02:10] | File: frontend/src/App.jsx | Line: 585 | Keyword: Frontend-Read-Actions | Status: Success | Change: Implemented markAsRead and markAllAsRead helper actions with local state optimistic updates, auto-mark on hover using onMouseEnter triggers, and integrated a "Mark all as read" button inside dashboard header.
+[2026-06-14 02:10] | File: frontend/src/App.css | Line: 1515 | Keyword: Unread-Pulse-Styles | Status: Success | Change: Styled pulsing unread green badge ("ใหม่"), unread message dashed border highlights, and list of read-by admin user badges at the bottom of the card embeds.
+[2026-06-14 02:12] | File: frontend/src/App.jsx | Line: 1339 | Keyword: Verified-IP-Badge-Tick | Status: Success | Change: Replaced Globe icon with Check (tick) icon in foreign IP verified badge on logs cards, and restructured text label to show Country and City names if resolved.
+[2026-06-14 02:15] | File: frontend/src/App.jsx | Line: 1342 | Keyword: Verified-IP-Badge-Country-Only | Status: Success | Change: Updated the foreign IP verified badge to only display the country name on the logs card to prevent text overflow, keeping the city and IP information inside the hover tooltip.
+[2026-06-14 02:20] | File: frontend/src/App.jsx | Line: 1342 | Keyword: Fake-IP-Detection-UI | Status: Success | Change: Implemented a red X badge with "(ปลอม)" suffix for inter_register logs that resolve to Thailand IP to identify fake international registrants, keeping green Check badge for genuine foreign IPs.
+[2026-06-14 02:20] | File: bot/bot.js | Line: 757 | Keyword: Fake-IP-Detection-Bot | Status: Success | Change: Integrated GeoIP check in Discord bot for inter_register logs. If IP resolves to Thailand (TH), bot reacts with ❌ emoji to the player message, labels log embeds with a fake warning title, and reacts with ❌ to log channel embeds.

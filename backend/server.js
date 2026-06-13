@@ -197,11 +197,40 @@ app.get('/api/logs', authenticateToken, async (req, res) => {
     const { data: logs, error } = await queryBuilder.order('created_at', { ascending: false });
     if (error) throw error;
 
-    const formattedLogs = (logs || []).map(log => ({
-      ...log,
-      attachments: parseJsonField(log.attachments),
-      links: parseJsonField(log.links)
-    }));
+    // Fetch read states for these logs, handled in try-catch in case table log_read_states doesn't exist yet
+    let readStates = [];
+    const logIds = (logs || []).map(l => l.id);
+    if (logIds.length > 0) {
+      try {
+        const { data: states, error: statesError } = await supabase
+          .from('log_read_states')
+          .select('*')
+          .in('log_id', logIds);
+        if (!statesError && states) {
+          readStates = states;
+        } else if (statesError) {
+          console.warn('Warning: log_read_states table not accessible or RLS blocked. Make sure it is created in Supabase.', statesError.message);
+        }
+      } catch (dbErr) {
+        console.warn('Warning: Could not fetch read states. Make sure log_read_states table exists.', dbErr.message);
+      }
+    }
+
+    const formattedLogs = (logs || []).map(log => {
+      const reads = readStates
+        .filter(s => s.log_id === log.id)
+        .map(s => ({
+          userId: s.user_id,
+          username: s.username,
+          readAt: s.read_at
+        }));
+      return {
+        ...log,
+        attachments: parseJsonField(log.attachments),
+        links: parseJsonField(log.links),
+        readBy: reads
+      };
+    });
 
     res.json(formattedLogs);
   } catch (err) {
@@ -323,6 +352,69 @@ app.delete('/api/logs/:id', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error deleting log:', err);
     res.status(500).json({ error: 'Failed to delete log' });
+  }
+});
+
+// POST /api/logs/read-all - Mark all logs as read for the logged-in admin
+app.post('/api/logs/read-all', authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  const username = req.user.displayName || req.user.username;
+
+  try {
+    // 1. Fetch all existing log IDs
+    const { data: logsList, error: logsError } = await supabase
+      .from('logs')
+      .select('id');
+
+    if (logsError) throw logsError;
+
+    if (!logsList || logsList.length === 0) {
+      return res.json({ success: true, message: 'No logs to mark as read' });
+    }
+
+    // 2. Prepare upsert records
+    const insertData = logsList.map(log => ({
+      log_id: log.id,
+      user_id: userId,
+      username: username
+    }));
+
+    // 3. Upsert records
+    const { error: upsertError } = await supabase
+      .from('log_read_states')
+      .upsert(insertData, { onConflict: 'log_id,user_id' });
+
+    if (upsertError) throw upsertError;
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error marking all logs as read:', err);
+    res.status(500).json({ error: 'Failed to mark all logs as read. Make sure public.log_read_states table is created in Supabase.' });
+  }
+});
+
+// POST /api/logs/:id/read - Mark a single log as read for the logged-in admin
+app.post('/api/logs/:id/read', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+  const username = req.user.displayName || req.user.username;
+
+  try {
+    const { data, error } = await supabase
+      .from('log_read_states')
+      .upsert(
+        { log_id: parseInt(id), user_id: userId, username: username },
+        { onConflict: 'log_id,user_id' }
+      )
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error(`Error marking log ${id} as read:`, err);
+    res.status(500).json({ error: 'Failed to mark log as read. Make sure public.log_read_states table is created in Supabase.' });
   }
 });
 
