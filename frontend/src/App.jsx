@@ -124,6 +124,7 @@ const getFormattedFields = (log) => {
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [user, setUser] = useState(null);
+  const [loadingUser, setLoadingUser] = useState(!!(localStorage.getItem('token') || ''));
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -170,9 +171,11 @@ export default function App() {
   useEffect(() => {
     if (!token) {
       setUser(null);
+      setLoadingUser(false);
       return;
     }
 
+    setLoadingUser(true);
     fetch('/api/auth/me', {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -186,6 +189,9 @@ export default function App() {
       .catch(err => {
         console.error(err);
         handleLogout();
+      })
+      .finally(() => {
+        setLoadingUser(false);
       });
   }, [token]);
 
@@ -463,6 +469,20 @@ ${ansiContent}
         return `📂 ${cleanName.charAt(0).toUpperCase() + cleanName.slice(1)}`;
     }
   };
+
+  // Loading State during session validation
+  if (token && loadingUser) {
+    return (
+      <div className="login-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '15px' }}>
+        <div className="glow-logo">
+          <Shield className="w-12 h-12 text-neon-cyan animate-pulse" />
+        </div>
+        <p style={{ color: '#00ff87', fontSize: '18px', fontWeight: '500', textShadow: '0 0 10px rgba(0,255,135,0.4)' }}>
+          กำลังตรวจสอบสิทธิ์การเข้าใช้งาน...
+        </p>
+      </div>
+    );
+  }
 
   // Login Screen
   if (!token || !user) {
