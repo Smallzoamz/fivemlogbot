@@ -1046,6 +1046,22 @@ input:focus, select:focus, textarea:focus {
   background: #23a55a; /* Discord Green */
 }
 
+/* Announcement copy button style */
+.btn-announcement {
+  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%) !important;
+  color: #ffffff !important;
+}
+
+.btn-announcement:hover {
+  background: linear-gradient(135deg, #b975ff 0%, #8b5cf6 100%) !important;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+}
+
+.btn-announcement.success {
+  background: #23a55a !important;
+  box-shadow: 0 0 10px rgba(35, 165, 90, 0.4);
+}
+
 .btn-action-delete {
   display: flex;
   align-items: center;

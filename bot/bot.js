@@ -93,7 +93,7 @@ function getNewTicketChannelName(currentName, category) {
   let username = 'user';
   const parts = currentName.split('-');
   if (parts.length > 1) {
-    if (['🚨', '⚠️', '🐛', '💎', '📝', '✈️', '📂'].includes(parts[0])) {
+    if (['🟥', '🟨', '🟧', '💸', '✈️', '📷', '📂'].includes(parts[0])) {
       username = parts.slice(2).join('-');
     } else {
       username = parts.slice(1).join('-');
@@ -103,12 +103,12 @@ function getNewTicketChannelName(currentName, category) {
   }
 
   const mappings = {
-    ban: { emoji: '🚨', abbr: 'ban' },
-    warning: { emoji: '⚠️', abbr: 'warn' },
-    bug_report: { emoji: '🐛', abbr: 'bug' },
-    donation: { emoji: '💎', abbr: 'donate' },
-    note: { emoji: '📝', abbr: 'note' },
-    inter_register: { emoji: '✈️', abbr: 'inter' }
+    ban: { emoji: '🟥', abbr: 'ban' },
+    warning: { emoji: '🟨', abbr: 'warn' },
+    orange: { emoji: '🟧', abbr: 'orange' },
+    fine: { emoji: '💸', abbr: 'fine' },
+    inter_register: { emoji: '✈️', abbr: 'inter' },
+    evidence: { emoji: '📷', abbr: 'evidence' }
   };
 
   const map = mappings[category];
@@ -208,12 +208,12 @@ client.on('interactionCreate', async (interaction) => {
           });
           
           const labels = {
-            ban: '🚨 แจ้งร้องเรียนผู้เล่น (Ban)',
-            warning: '⚠️ ตักเตือนผู้เล่น (Warning)',
-            bug_report: '🐛 แจ้งพบบั๊ก (Bug Report)',
-            donation: '💎 โดเนท (Donation)',
-            note: '📝 บันทึกทั่วไป (Note)',
-            inter_register: '✈️ ลงทะเบียนต่างประเทศ (Inter Register)'
+            ban: '🟥 ใบแดง',
+            warning: '🟨 ใบเหลือง',
+            orange: '🟧 ใบส้ม',
+            fine: '💸 ประกาศปรับ',
+            inter_register: '✈️ ลงทะเบียนต่างประเทศ',
+            evidence: '📷 เก็บหลักฐาน'
           };
           const selectedLabel = labels[category] || category;
           
@@ -353,34 +353,34 @@ client.on('interactionCreate', async (interaction) => {
             .setPlaceholder('📂 เลือกหมวดหมู่ของตั๋วร้องเรียน (Select Category)...')
             .addOptions([
               {
-                label: '🚨 แจ้งร้องเรียนผู้เล่น (Report Player)',
-                description: 'รายงานพฤติกรรมผู้เล่นผิดกฎ หรือผู้เล่นใช้โปรแกรมช่วยเล่น',
-                value: 'ban'
+                label: '💸 ประกาศปรับ (Fine)',
+                description: 'ประกาศปรับเงินผู้เล่นและบันทึกประวัติค่าปรับ',
+                value: 'fine'
               },
               {
-                label: '⚠️ ตักเตือนผู้เล่น (Warning)',
+                label: '🟨 ใบเหลือง (Yellow Card)',
                 description: 'บันทึกประวัติการกระทำความผิดเพื่อตักเตือนผู้เล่น',
                 value: 'warning'
               },
               {
-                label: '🐛 แจ้งพบบั๊ก (Report Bug)',
-                description: 'แจ้งข้อผิดพลาดของระบบ/สคริปต์ในเซิฟเวอร์',
-                value: 'bug_report'
+                label: '🟧 ใบส้ม (Orange Card)',
+                description: 'ลงบันทึกคาดโทษใบส้มและบันทึกข้อมูล',
+                value: 'orange'
               },
               {
-                label: '💎 ติดต่อเรื่องโดเนท (Donation)',
-                description: 'สอบถามรายละเอียดหรือแจ้งปัญหาเรื่องการเติมเงิน',
-                value: 'donation'
-              },
-              {
-                label: '📝 สอบถามทั่วไป / บันทึกทั่วไป (General Support)',
-                description: 'ขอความช่วยเหลือทั่วไปจากทีมงานแอดมิน',
-                value: 'note'
+                label: '🟥 ใบแดง (Red Card / Ban)',
+                description: 'แบนผู้เล่นทำผิดกฎเซิฟเวอร์ขั้นรุนแรง',
+                value: 'ban'
               },
               {
                 label: '✈️ ลงทะเบียนต่างประเทศ (Inter Register)',
                 description: 'ลงทะเบียนสำหรับผู้เล่นต่างประเทศที่ยื่นเรื่องขอเข้าเซิฟเวอร์',
                 value: 'inter_register'
+              },
+              {
+                label: '📷 เก็บหลักฐาน (Evidence)',
+                description: 'บันทึกและรวบรวมไฟล์รูปภาพ/ลิงก์หลักฐานของเคส',
+                value: 'evidence'
               },
               {
                 label: '➕ สร้างหมวดหมู่ใหม่ (Custom Category)',
@@ -486,7 +486,7 @@ client.on('messageCreate', async (message) => {
   
   // Identify if this is a ticket channel (either by database validation or channel name prefix)
   const isTicket = channel.name.startsWith('ticket-') || 
-                   ['🚨', '⚠️', '🐛', '💎', '📝', '✈️', '📂'].some(emoji => channel.name.startsWith(`${emoji}-`));
+                   ['🟥', '🟨', '🟧', '💸', '✈️', '📷', '📂'].some(emoji => channel.name.startsWith(`${emoji}-`));
   if (channel.type === ChannelType.GuildText && isTicket) {
     if (shouldSkipLog(message.content)) return;
     try {
@@ -568,6 +568,8 @@ client.on('messageCreate', async (message) => {
         } else if (resolvedCategory === 'inter_register' || resolvedCategory.includes('inter') || resolvedCategory.includes('ต่างประเทศ')) {
           await message.react('✈️').catch(err => {});
           await message.react('🌐').catch(err => {});
+        } else if (resolvedCategory === 'fine' || resolvedCategory.includes('fine') || resolvedCategory.includes('ปรับ')) {
+          await message.react('💸').catch(err => {});
         }
 
         // Send Log to Discord Log Channel if it is evidence (images or links)

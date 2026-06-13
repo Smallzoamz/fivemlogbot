@@ -271,6 +271,28 @@ const getVideoInfo = (url) => {
   return null;
 };
 
+// Helper: Check if a category belongs to announcement categories
+const isAnnouncementCategory = (category) => {
+  if (!category) return false;
+  const cat = category.toLowerCase();
+  return (
+    cat === 'ban' || cat.includes('แดง') || cat.includes('red') ||
+    cat === 'warning' || cat.includes('เหลือง') || cat.includes('yellow') ||
+    cat.includes('ส้ม') || cat.includes('orange') ||
+    cat === 'fine' || cat.includes('ปรับ') || cat.includes('fine')
+  );
+};
+
+// Helper: Format raw Discord ID to Role ping format
+const formatDiscordTag = (input) => {
+  if (!input) return '';
+  const trimmed = input.trim();
+  if (/^\d+$/.test(trimmed)) {
+    return `<@&${trimmed}>`;
+  }
+  return trimmed;
+};
+
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [user, setUser] = useState(null);
@@ -279,7 +301,17 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [categories, setCategories] = useState(['ticket', 'evidence', 'ban', 'warning', 'note', 'inter_register']);
+  const [categories, setCategories] = useState(['fine', 'warning', 'orange', 'ban', 'inter_register', 'evidence']);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [discordTags, setDiscordTags] = useState(() => {
+    const saved = localStorage.getItem('discordTags');
+    return saved ? JSON.parse(saved) : {
+      ban: '',
+      warning: '',
+      orange: '',
+      fine: ''
+    };
+  });
   const [ipCountries, setIpCountries] = useState({});
   
   // Modals state
@@ -549,7 +581,7 @@ export default function App() {
   };
 
   // Convert log details to Discord format & Copy
-  const copyToDiscord = (log) => {
+  const copyToDiscord = (log, isAnnouncement = false) => {
     const { description, playerFields, otherFields } = getFormattedFields(log);
 
     const ip = extractIpAddress(log, playerFields, otherFields);
@@ -695,6 +727,7 @@ export default function App() {
     }
 
     let typeLabel = '';
+    let fineLine = '';
     
     if (cat === 'ban' || cat.includes('แดง') || cat.includes('red')) {
       typeLabel = `🟥 **ประกาศใบแดง** 🟥`;
@@ -702,18 +735,51 @@ export default function App() {
       typeLabel = `🟧 **ประกาศใบส้ม** 🟧`;
     } else if (cat === 'warning' || cat.includes('เหลือง') || cat.includes('yellow')) {
       typeLabel = `🟨 **ประกาศใบเหลือง** 🟨`;
+    } else if (cat === 'fine' || cat.includes('ปรับ') || cat.includes('fine')) {
+      typeLabel = `💸 **ประกาศปรับ** 💸`;
+      let amount = (description || log.details || '').trim();
+      amount = amount.replace(/^[🪙💸💰\s]*ปรับ\s*[:：]?\s*/gi, '').replace(/[🪙💸💰\s]*$/gi, '').trim();
+      fineLine = `\n💸 ปรับ : ${amount} 💸\n`;
     } else {
       const labelEmoji = log.category === 'evidence' ? '📷' : '📝';
       const fallbackLabel = log.category === 'evidence' ? 'EVIDENCE LOG / หลักฐานเคส' : 'LOG / บันทึก';
       typeLabel = `${labelEmoji} **[${fallbackLabel}]**`;
     }
 
-    const finalMsgText = `${typeLabel}
-${playerContent}${reasonContent}${evidenceLines}`;
+    // Prepend Discord Tag for announcement
+    let tagPrefix = '';
+    if (isAnnouncement) {
+      const getTagForLog = (category) => {
+        const c = (category || '').toLowerCase();
+        if (c === 'ban' || c.includes('แดง') || c.includes('red')) {
+          return discordTags.ban;
+        }
+        if (c === 'warning' || c.includes('เหลือง') || c.includes('yellow')) {
+          return discordTags.warning;
+        }
+        if (c.includes('ส้ม') || c.includes('orange')) {
+          return discordTags.orange;
+        }
+        if (c === 'fine' || c.includes('ปรับ') || c.includes('fine')) {
+          return discordTags.fine;
+        }
+        return '';
+      };
+      
+      const rawTag = getTagForLog(log.category);
+      const formattedTag = formatDiscordTag(rawTag);
+      if (formattedTag) {
+        tagPrefix = `${formattedTag}\n\n`;
+      }
+    }
+
+    const finalMsgText = `${tagPrefix}${typeLabel}
+${fineLine}${playerContent}${reasonContent}${evidenceLines}`;
 
     navigator.clipboard.writeText(finalMsgText)
       .then(() => {
-        setCopiedId(log.id);
+        const successId = isAnnouncement ? `${log.id}-ann` : (isAnnouncementCategory(log.category) ? `${log.id}-log` : log.id);
+        setCopiedId(successId);
         setTimeout(() => setCopiedId(null), 2000);
       })
       .catch(err => console.error('Failed to copy text: ', err));
@@ -770,6 +836,22 @@ ${playerContent}${reasonContent}${evidenceLines}`;
           glow: 'rgba(234, 179, 8, 0.3)',
           icon: <Database className="w-4 h-4 text-yellow-500" />
         };
+      case 'orange':
+        return {
+          bg: 'rgba(249, 115, 22, 0.15)',
+          border: 'rgba(249, 115, 22, 0.4)',
+          text: '#f97316',
+          glow: 'rgba(249, 115, 22, 0.3)',
+          icon: <AlertTriangle className="w-4 h-4 text-orange-500" />
+        };
+      case 'fine':
+        return {
+          bg: 'rgba(234, 179, 8, 0.15)',
+          border: 'rgba(234, 179, 8, 0.4)',
+          text: '#eab308',
+          glow: 'rgba(234, 179, 8, 0.3)',
+          icon: <Database className="w-4 h-4 text-yellow-500" />
+        };
       case 'inter_register':
         return {
           bg: 'rgba(16, 185, 129, 0.15)',
@@ -793,14 +875,12 @@ ${playerContent}${reasonContent}${evidenceLines}`;
   const getCategoryLabel = (cat) => {
     switch (cat) {
       case 'all': return 'ทั้งหมด';
-      case 'ticket': return '🎫 ตั๋วเคส';
-      case 'evidence': return '📷 รูปหลักฐาน';
-      case 'ban': return '🚨 แบนผู้เล่น';
-      case 'warning': return '⚠️ เตือนผู้เล่น';
-      case 'note': return '📝 บันทึกทั่วไป';
-      case 'bug_report': return '🐛 บั๊กระบบ';
-      case 'donation': return '💎 เติมเงิน / โดเนท';
+      case 'fine': return '💸 ประกาศปรับ';
+      case 'warning': return '🟨 ใบเหลือง';
+      case 'orange': return '🟧 ใบส้ม';
+      case 'ban': return '🟥 ใบแดง';
       case 'inter_register': return '✈️ ลงทะเบียนต่างประเทศ';
+      case 'evidence': return '📷 เก็บหลักฐาน';
       default:
         // Capitalize custom category names nicely
         const cleanName = cat.replace(/_/g, ' ');
@@ -938,10 +1018,17 @@ ${playerContent}${reasonContent}${evidenceLines}`;
             />
           </div>
 
-          <button onClick={() => setShowAddModal(true)} className="btn-primary">
-            <Plus className="w-5 h-5 mr-1" />
-            เพิ่มบันทึกเอง
-          </button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={() => setShowSettingsModal(true)} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '10px' }}>
+              <Shield className="w-5 h-5 text-neon-cyan" />
+              <span>ตั้งค่าแท็ก Discord</span>
+            </button>
+
+            <button onClick={() => setShowAddModal(true)} className="btn-primary">
+              <Plus className="w-5 h-5 mr-1" />
+              เพิ่มบันทึกเอง
+            </button>
+          </div>
         </section>
 
         {/* CATEGORY TABS */}
@@ -1029,7 +1116,13 @@ ${playerContent}${reasonContent}${evidenceLines}`;
                         {/* EMBED DESCRIPTION */}
                         {description && (
                           <div className="embed-description">
-                            <RichDescription text={description} />
+                            {log.category.toLowerCase() === 'fine' ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold', color: '#eab308' }}>
+                                <span>💸 ปรับ : {description.replace(/^[🪙💸💰\s]*ปรับ\s*[:：]?\s*/gi, '').replace(/[🪙💸💰\s]*$/gi, '').trim()} 💸</span>
+                              </div>
+                            ) : (
+                              <RichDescription text={description} />
+                            )}
                           </div>
                         )}
 
@@ -1211,22 +1304,60 @@ ${playerContent}${reasonContent}${evidenceLines}`;
 
                   {/* CARD ACTIONS */}
                   <div className="discord-message-actions">
-                    <button 
-                      onClick={() => copyToDiscord(log)} 
-                      className={`btn-action-copy ${copiedId === log.id ? 'success' : ''}`}
-                    >
-                      {copiedId === log.id ? (
-                        <>
-                          <Check className="w-4 h-4 mr-1 text-green-500" />
-                          คัดลอกสำเร็จ!
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4 mr-1" />
-                          คัดลอกใส่ Discord
-                        </>
-                      )}
-                    </button>
+                    {isAnnouncementCategory(log.category) ? (
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button 
+                          onClick={() => copyToDiscord(log, false)} 
+                          className={`btn-action-copy ${copiedId === `${log.id}-log` ? 'success' : ''}`}
+                        >
+                          {copiedId === `${log.id}-log` ? (
+                            <>
+                              <Check className="w-4 h-4 mr-1 text-green-500" />
+                              คัดลอก Log สำเร็จ!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4 mr-1" />
+                              คัดลอก Log
+                            </>
+                          )}
+                        </button>
+
+                        <button 
+                          onClick={() => copyToDiscord(log, true)} 
+                          className={`btn-action-copy btn-announcement ${copiedId === `${log.id}-ann` ? 'success' : ''}`}
+                        >
+                          {copiedId === `${log.id}-ann` ? (
+                            <>
+                              <Check className="w-4 h-4 mr-1 text-green-500" />
+                              คัดลอกประกาศสำเร็จ!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4 mr-1" />
+                              คัดลอกประกาศ
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => copyToDiscord(log, false)} 
+                        className={`btn-action-copy ${copiedId === log.id ? 'success' : ''}`}
+                      >
+                        {copiedId === log.id ? (
+                          <>
+                            <Check className="w-4 h-4 mr-1 text-green-500" />
+                            คัดลอกสำเร็จ!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4 mr-1" />
+                            คัดลอกใส่ Discord
+                          </>
+                        )}
+                      </button>
+                    )}
 
                     <button 
                       onClick={() => handleDeleteLog(log.id)} 
@@ -1320,6 +1451,73 @@ ${playerContent}${reasonContent}${evidenceLines}`;
               <div className="modal-actions">
                 <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary">ยกเลิก</button>
                 <button type="submit" className="btn-submit">ยืนยันบันทึก</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SETTINGS MODAL */}
+      {showSettingsModal && (
+        <div className="modal-backdrop">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2>ตั้งค่าแท็ก Discord สำหรับประกาศ</h2>
+              <button onClick={() => setShowSettingsModal(false)} className="btn-close-modal">&times;</button>
+            </div>
+            
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              localStorage.setItem('discordTags', JSON.stringify(discordTags));
+              setShowSettingsModal(false);
+            }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '10px' }}>
+                ระบุ ID บทบาท (Role ID) หรือ ID ผู้ใช้ (User ID) ที่ต้องการให้แทกเมื่อกดปุ่ม "คัดลอกประกาศ" (ระบบจะแปลงตัวเลขเดี่ยวให้เป็นแทกบทบาท &lt;@&amp;ID&gt; โดยอัตโนมัติ)
+              </p>
+
+              <div className="form-group">
+                <label>ใบแดง (Ban)</label>
+                <input 
+                  type="text" 
+                  placeholder="เช่น 123456789012345678 หรือ <@&12345...>"
+                  value={discordTags.ban}
+                  onChange={(e) => setDiscordTags({ ...discordTags, ban: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>ใบเหลือง (Warning)</label>
+                <input 
+                  type="text" 
+                  placeholder="เช่น 123456789012345678"
+                  value={discordTags.warning}
+                  onChange={(e) => setDiscordTags({ ...discordTags, warning: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>ใบส้ม (Orange Card)</label>
+                <input 
+                  type="text" 
+                  placeholder="เช่น 123456789012345678"
+                  value={discordTags.orange}
+                  onChange={(e) => setDiscordTags({ ...discordTags, orange: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>ประกาศปรับ (Fine/Adjustment)</label>
+                <input 
+                  type="text" 
+                  placeholder="เช่น 123456789012345678"
+                  value={discordTags.fine}
+                  onChange={(e) => setDiscordTags({ ...discordTags, fine: e.target.value })}
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" onClick={() => setShowSettingsModal(false)} className="btn-secondary">ยกเลิก</button>
+                <button type="submit" className="btn-submit">บันทึกตั้งค่า</button>
               </div>
             </form>
           </div>
