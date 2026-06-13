@@ -197,6 +197,7 @@ client.on('interactionCreate', async (interaction) => {
           ephemeral: true
         });
       } else {
+        await interaction.deferReply({ ephemeral: true });
         try {
           await api.put(`/bot/tickets/${interaction.channel.id}/category`, { category });
           
@@ -216,7 +217,7 @@ client.on('interactionCreate', async (interaction) => {
           };
           const selectedLabel = labels[category] || category;
           
-          await interaction.reply({
+          await interaction.editReply({
             content: `📂 ตั้งค่าหมวดหมู่ของตั๋วร้องเรียนนี้เป็น: **[${selectedLabel}]** เรียบร้อยแล้ว ข้อมูลทั้งหมดจะถูกส่งลงหน้าเว็บในแท็บนี้`
           });
 
@@ -229,7 +230,7 @@ client.on('interactionCreate', async (interaction) => {
           await sendToLogChannel(guild, categoryLogEmbed);
         } catch (err) {
           console.error('Failed to update ticket category:', err.message);
-          await interaction.reply({ content: 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิฟเวอร์ API หลังบ้านเพื่อตั้งค่าหมวดหมู่', ephemeral: true });
+          await interaction.editReply({ content: 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิฟเวอร์ API หลังบ้านเพื่อตั้งค่าหมวดหมู่' });
         }
       }
     }
@@ -238,6 +239,7 @@ client.on('interactionCreate', async (interaction) => {
   // Handle Modal submissions (for custom categories)
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'custom_category_modal') {
+      await interaction.deferReply({ ephemeral: true });
       const customCategory = interaction.fields.getTextInputValue('category_name_input').trim();
       const normalized = customCategory.toLowerCase().replace(/\s+/g, '_');
       
@@ -250,7 +252,7 @@ client.on('interactionCreate', async (interaction) => {
           console.error('Failed to rename channel to custom category:', newChannelName, err.message);
         });
 
-        await interaction.reply({
+        await interaction.editReply({
           content: `✅ สร้างและตั้งค่าตั๋วร้องเรียนนี้เป็นหมวดหมู่ใหม่: **[📂 ${customCategory}]** เรียบร้อยแล้ว ข้อมูลทั้งหมดจะถูกบันทึกเข้าหน้าเว็บแท็บนี้อัตโนมัติ!`
         });
 
@@ -263,7 +265,7 @@ client.on('interactionCreate', async (interaction) => {
         await sendToLogChannel(interaction.guild, categoryLogEmbed);
       } catch (err) {
         console.error('Failed to update custom ticket category:', err.message);
-        await interaction.reply({ content: 'เกิดข้อผิดพลาดในการบันทึกหมวดหมู่ใหม่ลงเซิฟเวอร์ API', ephemeral: true });
+        await interaction.editReply({ content: 'เกิดข้อผิดพลาดในการบันทึกหมวดหมู่ใหม่ลงเซิฟเวอร์ API' });
       }
     }
   }
