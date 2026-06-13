@@ -832,6 +832,7 @@ client.on('messageCreate', async (message) => {
             await logMsg.react('❌').catch(err => {});
           }
         }
+      }
 
     } catch (error) {
       console.error('Error logging message in ticket channel:', error.response?.data || error.message);
