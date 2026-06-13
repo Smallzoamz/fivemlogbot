@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FiveM Admin Desk Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Fira+Code:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- TOP STATUS HEADER -->
+    <header class="status-header">
+      <div class="logo">
+        <span class="logo-icon">⚡</span>
+        <h1>FIVEM ADMIN PANEL</h1>
+      </div>
+      
+      <div class="service-indicators">
+        <!-- Backend Indicator -->
+        <div class="indicator-card" id="card-api">
+          <div class="indicator-title">
+            <span class="status-dot" id="dot-api"></span>
+            <span class="label">Backend API</span>
+          </div>
+          <div class="indicator-controls">
+            <button class="btn btn-start" id="start-api" title="Start API">▶</button>
+            <button class="btn btn-stop" id="stop-api" title="Stop API">■</button>
+            <button class="btn btn-restart" id="restart-api" title="Restart API">↻</button>
+          </div>
+        </div>
+
+        <!-- Bot Indicator -->
+        <div class="indicator-card" id="card-bot">
+          <div class="indicator-title">
+            <span class="status-dot" id="dot-bot"></span>
+            <span class="label">Discord Bot</span>
+          </div>
+          <div class="indicator-controls">
+            <button class="btn btn-start" id="start-bot" title="Start Bot">▶</button>
+            <button class="btn btn-stop" id="stop-bot" title="Stop Bot">■</button>
+            <button class="btn btn-restart" id="restart-bot" title="Restart Bot">↻</button>
+          </div>
+        </div>
+
+        <!-- Web Indicator -->
+        <div class="indicator-card" id="card-web">
+          <div class="indicator-title">
+            <span class="status-dot" id="dot-web"></span>
+            <span class="label">Web Frontend</span>
+          </div>
+          <div class="indicator-controls">
+            <button class="btn btn-start" id="start-web" title="Start Frontend">▶</button>
+            <button class="btn btn-stop" id="stop-web" title="Stop Frontend">■</button>
+            <button class="btn btn-restart" id="restart-web" title="Restart Frontend">↻</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- TAB SWITCH BAR -->
+    <nav class="tab-bar">
+      <button class="tab-button active" data-tab="api">🌐 BACKEND API</button>
+      <button class="tab-button" data-tab="bot">🤖 DISCORD BOT</button>
+      <button class="tab-button" data-tab="web">💻 WEB FRONTEND</button>
+    </nav>
+
+    <!-- TERMINAL VIEWPORTS -->
+    <main class="terminal-container">
+      <!-- API Terminal -->
+      <div class="terminal-viewport active" id="viewport-api">
+        <div class="terminal-log-list" id="logs-api"></div>
+      </div>
+
+      <!-- Bot Terminal -->
+      <div class="terminal-viewport" id="viewport-bot">
+        <div class="terminal-log-list" id="logs-bot"></div>
+      </div>
+
+      <!-- Web Terminal -->
+      <div class="terminal-viewport" id="viewport-web">
+        <div class="terminal-log-list" id="logs-web"></div>
+      </div>
+    </main>
+
+    <!-- COMMAND INPUT LINE -->
+    <footer class="command-footer">
+      <div class="cmd-prompt">
+        <span class="prompt-text" id="current-service-prefix">api:~$</span>
+        <input type="text" id="cmd-input" placeholder="พิมพ์คำสั่งเพื่อส่งเข้าไปยัง CMD (เช่น rs เพื่อรีสตาร์ท Nodemon)..." autocomplete="off">
+        <button id="btn-send-cmd">SEND</button>
+      </div>
+    </footer>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

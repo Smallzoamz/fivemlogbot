@@ -1,0 +1,13 @@
+{
+  "name": "fivem-admin-desktop-runner",
+  "version": "1.0.0",
+  "description": "Desktop Runner Console for FiveM Admin System",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^30.0.6"
+  }
+}

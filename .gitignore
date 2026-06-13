@@ -1,0 +1,21 @@
+# Node.js dependencies
+node_modules/
+
+# Local databases and uploads
+*.db
+*.db-journal
+backend/uploads/
+backend/database.db
+
+# Environments
+.env
+.env*.local
+backend/.env
+bot/.env
+bot/.env.local
+
+# Build outputs
+dist/
+.vercel/
+.electron/
+out/

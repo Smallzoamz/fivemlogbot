@@ -1,0 +1,16 @@
+{
+  "name": "fivem-admin-system-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix bot install && npm --prefix frontend install && npm --prefix desktop install",
+    "start:backend": "npm --prefix backend start",
+    "start:bot": "npm --prefix bot start",
+    "start:frontend": "npm --prefix frontend run dev",
+    "start:cli": "concurrently --names \"API,BOT,WEB\" -c \"cyan,magenta,yellow\" \"npm run start:backend\" \"npm run start:bot\" \"npm run start:frontend\"",
+    "start": "npm --prefix desktop start"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

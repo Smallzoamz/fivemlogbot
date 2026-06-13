@@ -1,0 +1,316 @@
+/* PREMIUM DESKTOP APPS STYLES */
+
+:root {
+  --bg-dark: #07090e;
+  --bg-terminal: #0a0d14;
+  --bg-header: rgba(18, 22, 33, 0.95);
+  --border-color: rgba(255, 255, 255, 0.06);
+  
+  --text-main: #e2e8f0;
+  --text-muted: #64748b;
+  
+  --neon-cyan: #00f0ff;
+  --neon-pink: #ff007f;
+  --neon-yellow: #f59e0b;
+  --neon-green: #10b981;
+  --neon-red: #ef4444;
+
+  --font-family-title: 'Outfit', sans-serif;
+  --font-family-mono: 'Fira Code', 'Courier New', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family-title);
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* TOP STATUS HEADER */
+.status-header {
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border-color);
+  padding: 14px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  font-size: 1.4rem;
+  text-shadow: 0 0 10px var(--neon-cyan);
+}
+
+.logo h1 {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  background: linear-gradient(90deg, #fff, var(--neon-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.service-indicators {
+  display: flex;
+  gap: 12px;
+}
+
+.indicator-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: all 0.2s ease;
+}
+
+.indicator-card.stopped {
+  opacity: 0.6;
+}
+
+.indicator-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.running {
+  background-color: var(--neon-green);
+  box-shadow: 0 0 10px var(--neon-green);
+}
+
+.status-dot.stopped {
+  background-color: var(--neon-red);
+  box-shadow: 0 0 10px var(--neon-red);
+}
+
+.indicator-title .label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.indicator-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-start:hover {
+  color: var(--neon-green);
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.2);
+}
+
+.btn-stop:hover {
+  color: var(--neon-red);
+  border-color: rgba(239, 68, 68, 0.3);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.2);
+}
+
+.btn-restart:hover {
+  color: var(--neon-cyan);
+  border-color: rgba(0, 240, 255, 0.3);
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.2);
+}
+
+
+/* TAB SWITCH BAR */
+.tab-bar {
+  display: flex;
+  background: rgba(10, 14, 21, 0.5);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 24px;
+}
+
+.tab-button {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  padding: 12px 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+  color: var(--text-main);
+}
+
+.tab-button.active {
+  color: var(--neon-cyan);
+  border-bottom-color: var(--neon-cyan);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+/* TERMINAL VIEWPORTS */
+.terminal-container {
+  flex: 1;
+  background-color: var(--bg-terminal);
+  position: relative;
+  overflow: hidden;
+}
+
+.terminal-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  display: none;
+}
+
+.terminal-viewport.active {
+  display: block;
+}
+
+.terminal-log-list {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  font-family: var(--font-family-mono);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.log-line {
+  color: #a7f3d0; /* Soft green terminal text color */
+}
+
+.command-echo {
+  color: var(--neon-cyan);
+  font-weight: 600;
+}
+
+/* Scrollbar on Terminal viewports */
+.terminal-log-list::-webkit-scrollbar {
+  width: 8px;
+}
+.terminal-log-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.terminal-log-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+.terminal-log-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+
+/* COMMAND INPUT LINE */
+.command-footer {
+  background: rgba(18, 22, 33, 0.95);
+  border-top: 1px solid var(--border-color);
+  padding: 12px 24px;
+}
+
+.cmd-prompt {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 4px 12px;
+  gap: 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cmd-prompt:focus-within {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.12);
+}
+
+.prompt-text {
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--neon-pink);
+  white-space: nowrap;
+}
+
+#cmd-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  outline: none;
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+  padding: 6px 0;
+}
+
+#btn-send-cmd {
+  background: linear-gradient(135deg, var(--neon-cyan), #0077ff);
+  border: none;
+  color: #05080e;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+#btn-send-cmd:hover {
+  transform: scale(1.02);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+}
