@@ -15,7 +15,8 @@ import {
   Check,
   User as UserIcon,
   Shield,
-  Globe
+  Globe,
+  Play
 } from 'lucide-react';
 
 // Helper: Extract a short display name from a long URL
@@ -210,6 +211,66 @@ const getFormattedFields = (log) => {
   };
 };
 
+// Helper: Detect and parse video links (Google Drive, YouTube, direct video files)
+const getVideoInfo = (url) => {
+  if (!url) return null;
+  
+  // 1. Google Drive
+  if (url.includes('drive.google.com') && (url.includes('/file/d/') || url.includes('id='))) {
+    let fileId = '';
+    const matchD = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (matchD) {
+      fileId = matchD[1];
+    } else {
+      const matchId = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (matchId) {
+        fileId = matchId[1];
+      }
+    }
+    if (fileId) {
+      return {
+        type: 'drive',
+        embedUrl: `https://drive.google.com/file/d/${fileId}/preview`
+      };
+    }
+  }
+
+  // 2. YouTube
+  if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    let videoId = '';
+    const matchV = url.match(/[?&]v=([a-zA-Z0-9_-]+)/);
+    if (matchV) {
+      videoId = matchV[1];
+    } else {
+      const matchShort = url.match(/youtu\.be\/([a-zA-Z0-9_-]+)/);
+      if (matchShort) {
+        videoId = matchShort[1];
+      } else {
+        const matchEmbed = url.match(/\/embed\/([a-zA-Z0-9_-]+)/);
+        if (matchEmbed) {
+          videoId = matchEmbed[1];
+        }
+      }
+    }
+    if (videoId) {
+      return {
+        type: 'youtube',
+        embedUrl: `https://www.youtube.com/embed/${videoId}?autoplay=1`
+      };
+    }
+  }
+
+  // 3. Direct video file
+  if (/\.(mp4|webm|ogg|mov)$/i.test(url) || (url.includes('cdn.discordapp.com/attachments/') && url.includes('.mp4'))) {
+    return {
+      type: 'direct',
+      embedUrl: url
+    };
+  }
+
+  return null;
+};
+
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [user, setUser] = useState(null);
@@ -237,6 +298,7 @@ export default function App() {
   const [copiedValue, setCopiedValue] = useState(null);
   const [copiedPlayerGroupId, setCopiedPlayerGroupId] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
+  const [previewVideo, setPreviewVideo] = useState(null);
 
   // Update categories set from logs list dynamically
   useEffect(() => {
@@ -1114,18 +1176,34 @@ ${playerContent}${reasonContent}${evidenceLines}`;
                       <div className="embed-links">
                         <div className="embed-attachments-title">ลิงก์แนบ:</div>
                         <div className="embed-links-row">
-                          {log.links.map((link, idx) => (
-                            <a 
-                              key={idx} 
-                              href={link} 
-                              target="_blank" 
-                              rel="noreferrer" 
-                              className="embed-btn-link"
-                            >
-                              <ExternalLink className="w-3 h-3 mr-1" />
-                              {link.length > 35 ? link.substring(0, 35) + '...' : link}
-                            </a>
-                          ))}
+                          {log.links.map((link, idx) => {
+                            const videoInfo = getVideoInfo(link);
+                            if (videoInfo) {
+                              return (
+                                <button 
+                                  key={idx} 
+                                  onClick={() => setPreviewVideo(videoInfo)}
+                                  className="embed-btn-link video-link"
+                                  type="button"
+                                >
+                                  <Play className="w-3 h-3 mr-1" />
+                                  {link.length > 35 ? link.substring(0, 35) + '...' : link}
+                                </button>
+                              );
+                            }
+                            return (
+                              <a 
+                                key={idx} 
+                                href={link} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                className="embed-btn-link"
+                              >
+                                <ExternalLink className="w-3 h-3 mr-1" />
+                                {link.length > 35 ? link.substring(0, 35) + '...' : link}
+                              </a>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -1254,6 +1332,28 @@ ${playerContent}${reasonContent}${evidenceLines}`;
           <div className="image-preview-modal-content" onClick={(e) => e.stopPropagation()}>
             <button className="image-preview-modal-close" onClick={() => setPreviewImage(null)}>&times;</button>
             <img src={previewImage} alt="Preview" className="image-preview-modal-img" />
+          </div>
+        </div>
+      )}
+
+      {/* VIDEO PREVIEW MODAL */}
+      {previewVideo && (
+        <div className="image-preview-modal-backdrop" onClick={() => setPreviewVideo(null)}>
+          <div className="image-preview-modal-content video-preview-container" onClick={(e) => e.stopPropagation()}>
+            <button className="image-preview-modal-close" onClick={() => setPreviewVideo(null)}>&times;</button>
+            <div className="video-player-wrapper">
+              {previewVideo.type === 'direct' ? (
+                <video src={previewVideo.embedUrl} controls autoPlay className="video-preview-element" />
+              ) : (
+                <iframe 
+                  src={previewVideo.embedUrl} 
+                  frameBorder="0" 
+                  allow="autoplay; encrypted-media" 
+                  allowFullScreen 
+                  className="video-preview-iframe"
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
