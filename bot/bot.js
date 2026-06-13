@@ -88,6 +88,39 @@ function shouldSkipLog(text) {
   return skipKeywords.some(keyword => lowercaseText.includes(keyword));
 }
 
+// Helper: Get new ticket channel name with emoji and abbreviation based on category
+function getNewTicketChannelName(currentName, category) {
+  let username = 'user';
+  const parts = currentName.split('-');
+  if (parts.length > 1) {
+    if (['🚨', '⚠️', '🐛', '💎', '📝', '✈️', '📂'].includes(parts[0])) {
+      username = parts.slice(2).join('-');
+    } else {
+      username = parts.slice(1).join('-');
+    }
+  } else {
+    username = currentName;
+  }
+
+  const mappings = {
+    ban: { emoji: '🚨', abbr: 'ban' },
+    warning: { emoji: '⚠️', abbr: 'warn' },
+    bug_report: { emoji: '🐛', abbr: 'bug' },
+    donation: { emoji: '💎', abbr: 'donate' },
+    note: { emoji: '📝', abbr: 'note' },
+    inter_register: { emoji: '✈️', abbr: 'inter' }
+  };
+
+  const map = mappings[category];
+  if (map) {
+    return `${map.emoji}-${map.abbr}-${username}`.toLowerCase();
+  } else {
+    // Custom category
+    const cleanCategory = category.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return `📂-${cleanCategory || 'custom'}-${username}`.toLowerCase();
+  }
+}
+
 // Configure Axios instance for backend communications
 const api = axios.create({
   baseURL: API_URL,
@@ -167,6 +200,12 @@ client.on('interactionCreate', async (interaction) => {
         try {
           await api.put(`/bot/tickets/${interaction.channel.id}/category`, { category });
           
+          // Rename the channel to match the selected category
+          const newChannelName = getNewTicketChannelName(interaction.channel.name, category);
+          await interaction.channel.setName(newChannelName).catch(err => {
+            console.error('Failed to rename channel to:', newChannelName, err.message);
+          });
+          
           const labels = {
             ban: '🚨 แจ้งร้องเรียนผู้เล่น (Ban)',
             warning: '⚠️ ตักเตือนผู้เล่น (Warning)',
@@ -205,6 +244,12 @@ client.on('interactionCreate', async (interaction) => {
       try {
         await api.put(`/bot/tickets/${interaction.channel.id}/category`, { category: normalized });
         
+        // Rename the channel to match the custom category
+        const newChannelName = getNewTicketChannelName(interaction.channel.name, normalized);
+        await interaction.channel.setName(newChannelName).catch(err => {
+          console.error('Failed to rename channel to custom category:', newChannelName, err.message);
+        });
+
         await interaction.reply({
           content: `✅ สร้างและตั้งค่าตั๋วร้องเรียนนี้เป็นหมวดหมู่ใหม่: **[📂 ${customCategory}]** เรียบร้อยแล้ว ข้อมูลทั้งหมดจะถูกบันทึกเข้าหน้าเว็บแท็บนี้อัตโนมัติ!`
         });
@@ -492,7 +537,7 @@ client.on('messageCreate', async (message) => {
           category = 'evidence';
         }
 
-        await api.post(`/bot/tickets/${channel.id}/messages`, {
+        const response = await api.post(`/bot/tickets/${channel.id}/messages`, {
           authorName: message.author.username,
           authorId: message.author.id,
           content: message.content,
@@ -500,6 +545,26 @@ client.on('messageCreate', async (message) => {
           links: extractedLinks,
           category: category
         });
+
+        // React with checkmark to signify successful upload to backend database/website
+        await message.react('✅').catch(err => console.error('Failed to react with checkmark:', err.message));
+
+        // Get the resolved category from the backend response
+        const resolvedCategory = response.data?.category?.toLowerCase() || '';
+
+        // Add additional emoji reactions based on category
+        if (resolvedCategory === 'ban' || resolvedCategory.includes('red') || resolvedCategory.includes('แดง')) {
+          await message.react('🟥').catch(err => {});
+          await message.react('🚨').catch(err => {});
+        } else if (resolvedCategory.includes('orange') || resolvedCategory.includes('ส้ม')) {
+          await message.react('🟧').catch(err => {});
+        } else if (resolvedCategory === 'warning' || resolvedCategory.includes('yellow') || resolvedCategory.includes('เหลือง')) {
+          await message.react('🟨').catch(err => {});
+          await message.react('⚠️').catch(err => {});
+        } else if (resolvedCategory === 'inter_register' || resolvedCategory.includes('inter') || resolvedCategory.includes('ต่างประเทศ')) {
+          await message.react('✈️').catch(err => {});
+          await message.react('🌐').catch(err => {});
+        }
 
         // Send Log to Discord Log Channel if it is evidence (images or links)
         if (category === 'evidence') {

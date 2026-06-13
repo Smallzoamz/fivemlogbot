@@ -427,7 +427,7 @@ app.post('/api/bot/tickets/:channelId/messages', authenticateBot, async (req, re
 
     if (insertError) throw insertError;
 
-    res.status(201).json({ message: 'Message logged successfully' });
+    res.status(201).json({ message: 'Message logged successfully', category: logCategory });
   } catch (err) {
     console.error('Error logging bot ticket message:', err);
     res.status(500).json({ error: 'Failed to log message' });
