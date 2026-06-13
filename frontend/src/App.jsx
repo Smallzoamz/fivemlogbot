@@ -298,7 +298,6 @@ export default function App() {
   };
 
   // Convert log details to Discord format & Copy
-  // Convert log details to Discord format & Copy
   const copyToDiscord = (log) => {
     const { description, playerFields, otherFields } = getFormattedFields(log);
 
@@ -314,28 +313,16 @@ export default function App() {
     const seconds = String(logDate.getSeconds()).padStart(2, '0');
     const timeStr = `${hours}:${minutes}:${seconds}`;
 
-    // Get color code by category
-    const getAnsiCategoryColor = (cat) => {
-      switch (cat) {
-        case 'ban': return '31'; // Red
-        case 'warning': return '33'; // Yellow
-        case 'ticket': return '34'; // Blue
-        case 'evidence': return '35'; // Pink
-        default: return '32'; // Green
-      }
-    };
+    const dividerLine = `━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
-    const colorCode = getAnsiCategoryColor(log.category);
-    const dividerLine = `\u001b[1;${colorCode}m━━━━━━━━━━━━━━━━━━━━━━━━━━━\u001b[0m`;
-
-    let ansiContent = '';
-    ansiContent += `${dividerLine}\n`;
-    ansiContent += `\u001b[1;${colorCode}m[${log.category.toUpperCase()} DETAILS]\u001b[0m\n\n`;
+    let markdownContent = '';
+    markdownContent += `${dividerLine}\n`;
+    markdownContent += `**[${log.category.toUpperCase()} DETAILS]**\n\n`;
 
     // 1. Description (general details text)
     if (description) {
-      const descLines = description.split('\n').map(line => `\u001b[1;36m${line.trim()}\u001b[0m`).join('\n');
-      ansiContent += `${descLines}\n\n`;
+      const descLines = description.split('\n').map(line => `**${line.trim()}**`).join('\n');
+      markdownContent += `${descLines}\n\n`;
     }
 
     // Filter out fields marked as reporter details
@@ -344,26 +331,26 @@ export default function App() {
 
     // 2. Other Fields (like coordinates, distance)
     filteredOtherFields.forEach(f => {
-      ansiContent += `\u001b[1;33m${f.key.toUpperCase()}:\u001b[0m \u001b[1;37m${f.value}\u001b[0m\n`;
+      markdownContent += `**${f.key.toUpperCase()}:** ${f.value}\n`;
     });
-    if (filteredOtherFields.length > 0) ansiContent += '\n';
+    if (filteredOtherFields.length > 0) markdownContent += '\n';
 
     // 3. Player fields EXCLUDING reporter information (ผู้แจ้ง / คนแจ้ง)
     if (filteredPlayerFields.length > 0) {
-      ansiContent += `\u001b[1;33m[PLAYER INFORMATION]\u001b[0m\n`;
+      markdownContent += `**[PLAYER INFORMATION]**\n`;
       filteredPlayerFields.forEach(f => {
-        ansiContent += `  \u001b[1;35m${f.key}:\u001b[0m \u001b[1;37m${f.value}\u001b[0m\n`;
+        markdownContent += `  • **${f.key}:** ${f.value}\n`;
       });
-      ansiContent += '\n';
+      markdownContent += '\n';
     }
 
     // 4. Date and Time
-    ansiContent += `\u001b[1;33mDATE (LOCAL):\u001b[0m \u001b[1;37m${dateStr}\u001b[0m\n`;
-    ansiContent += `\u001b[1;33mTIME (LOCAL):\u001b[0m \u001b[1;37m${timeStr}\u001b[0m\n\n`;
+    markdownContent += `**DATE (LOCAL):** ${dateStr}\n`;
+    markdownContent += `**TIME (LOCAL):** ${timeStr}\n\n`;
 
     // 5. Admin details
-    ansiContent += `\u001b[1;36m✍️ บันทึกโดย:\u001b[0m \u001b[1;37m${log.created_by}\u001b[0m\n`;
-    ansiContent += dividerLine;
+    markdownContent += `✍️ **บันทึกโดย:** ${log.created_by}\n`;
+    markdownContent += dividerLine;
 
     // Attachments & reference links outside of code blocks for clickability
     const attachmentLines = log.attachments && log.attachments.length > 0 
@@ -378,9 +365,7 @@ export default function App() {
     const typeLabel = log.category === 'ban' ? 'BAN LOG / บันทึกการแบน' : log.category === 'warning' ? 'WARNING LOG / บันทึกเตือน' : log.category === 'evidence' ? 'EVIDENCE LOG / หลักฐานเคส' : 'LOG / บันทึก';
 
     const finalMsgText = `${labelEmoji} **[${typeLabel}]**
-\`\`\`ansi
-${ansiContent}
-\`\`\`${attachmentLines}${linkLines}`;
+${markdownContent}${attachmentLines}${linkLines}`;
 
     navigator.clipboard.writeText(finalMsgText)
       .then(() => {
