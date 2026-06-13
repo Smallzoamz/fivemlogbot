@@ -145,6 +145,8 @@ export default function App() {
   // Success message state (for Copy button)
   const [copiedId, setCopiedId] = useState(null);
   const [copiedValue, setCopiedValue] = useState(null);
+  const [copiedPlayerGroupId, setCopiedPlayerGroupId] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
 
   // Update categories set from logs list dynamically
   useEffect(() => {
@@ -295,6 +297,19 @@ export default function App() {
         setTimeout(() => setCopiedValue(null), 1500);
       })
       .catch(err => console.error('Failed to copy value:', err));
+  };
+
+  const handleCopyPlayerGroup = (fields, logId, e) => {
+    e.stopPropagation();
+    if (!fields || fields.length === 0) return;
+    
+    const textToCopy = fields.map(f => `${f.key}: ${f.value}`).join('\n');
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => {
+        setCopiedPlayerGroupId(logId);
+        setTimeout(() => setCopiedPlayerGroupId(null), 2000);
+      })
+      .catch(err => console.error('Failed to copy player group:', err));
   };
 
   // Convert log details to Discord format & Copy
@@ -691,7 +706,26 @@ ${markdownContent}${attachmentLines}${linkLines}`;
                       {/* Player Info Grouped */}
                       {playerFields.filter(f => !f.isReporter).length > 0 && (
                         <div className="embed-field-box player-info-group">
-                          <div className="field-label">PLAYER INFORMATION</div>
+                          <div className="player-info-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <div className="field-label" style={{ marginBottom: 0 }}>PLAYER INFORMATION</div>
+                            <button 
+                              className={`btn-copy-player-group ${copiedPlayerGroupId === log.id ? 'copied' : ''}`}
+                              onClick={(e) => handleCopyPlayerGroup(playerFields.filter(f => !f.isReporter), log.id, e)}
+                              title="คัดลอกข้อมูลผู้เล่นทั้งหมดในกรอบนี้"
+                            >
+                              {copiedPlayerGroupId === log.id ? (
+                                <>
+                                  <Check className="w-3 h-3 mr-1" />
+                                  <span>คัดลอกแล้ว!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3 mr-1" />
+                                  <span>คัดลอกทั้งหมด</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
                           <div className="player-info-list">
                             {playerFields.filter(f => !f.isReporter).map((field, idx) => {
                               const isCopied = copiedValue === field.value;
@@ -748,18 +782,19 @@ ${markdownContent}${attachmentLines}${linkLines}`;
                           {log.attachments.map((file, idx) => {
                             const imageUrl = file.startsWith('http') ? file : `/uploads/${file}`;
                             return (
-                              <a 
+                              <div 
                                 key={idx} 
-                                href={imageUrl} 
-                                target="_blank" 
-                                rel="noreferrer" 
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setPreviewImage(imageUrl);
+                                }}
                                 className="embed-image-card"
                               >
                                 <img src={imageUrl} alt="evidence-thumb" className="embed-small-image" />
                                 <div className="embed-image-card-overlay">
                                   <ExternalLink className="w-4 h-4 text-white" />
                                 </div>
-                              </a>
+                              </div>
                             );
                           })}
                         </div>
@@ -902,6 +937,16 @@ ${markdownContent}${attachmentLines}${linkLines}`;
                 <button type="submit" className="btn-submit">ยืนยันบันทึก</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* IMAGE PREVIEW MODAL */}
+      {previewImage && (
+        <div className="image-preview-modal-backdrop" onClick={() => setPreviewImage(null)}>
+          <div className="image-preview-modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="image-preview-modal-close" onClick={() => setPreviewImage(null)}>&times;</button>
+            <img src={previewImage} alt="Preview" className="image-preview-modal-img" />
           </div>
         </div>
       )}
