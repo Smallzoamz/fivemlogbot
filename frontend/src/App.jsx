@@ -597,8 +597,9 @@ export default function App() {
       
       let mapLine = '';
       if (ipInfo && ipInfo.lat && ipInfo.lon) {
-        const mapUrl = `https://static-maps.yandex.ru/1.x/?ll=${ipInfo.lon},${ipInfo.lat}&z=7&l=map&size=500,300&pt=${ipInfo.lon},${ipInfo.lat},pm2gnl&lang=en_US`;
-        mapLine = `\n📍 **แผนที่พิกัดประเทศผู้เล่น (Verified IP Location):**\n${mapUrl}\n`;
+        const cleanHost = window.location.origin;
+        const shortMapUrl = `${cleanHost}/api/map/${ipInfo.lat}/${ipInfo.lon}`;
+        mapLine = `\n📍 **แผนที่พิกัดประเทศผู้เล่น (Verified IP Location):**\n${shortMapUrl}\n`;
       }
       
       const finalMsgText = `${typeLabel}\n${detailsBlock}${evidenceLines}${mapLine}`;

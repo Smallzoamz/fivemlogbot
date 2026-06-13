@@ -277,6 +277,13 @@ app.get('/api/geoip/:ip', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/map/:lat/:lon - Public redirect to Yandex Static Map
+app.get('/api/map/:lat/:lon', (req, res) => {
+  const { lat, lon } = req.params;
+  const mapUrl = `https://static-maps.yandex.ru/1.x/?ll=${lon},${lat}&z=7&l=map&size=500,300&pt=${lon},${lat},pm2gnl&lang=en_US`;
+  res.redirect(mapUrl);
+});
+
 // DELETE /api/logs/:id
 app.delete('/api/logs/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
