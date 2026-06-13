@@ -313,7 +313,9 @@ export default function App() {
       if (ipCountries[ip]) continue;
       
       try {
-        const res = await fetch(`https://freeipapi.com/api/json/${ip}`);
+        const res = await fetch(`/api/geoip/${ip}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         const data = await res.json();
         if (data && data.countryCode) {
           setIpCountries(prev => ({

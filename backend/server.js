@@ -265,6 +265,18 @@ app.post('/api/logs', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/geoip/:ip - Proxy IP lookup to avoid client-side CORS and adblocker issues
+app.get('/api/geoip/:ip', authenticateToken, async (req, res) => {
+  const { ip } = req.params;
+  try {
+    const response = await axios.get(`https://freeipapi.com/api/json/${ip}`);
+    res.json(response.data);
+  } catch (err) {
+    console.error('Failed to proxy GeoIP lookup for IP ' + ip + ':', err.message);
+    res.status(500).json({ error: 'Failed to resolve IP' });
+  }
+});
+
 // DELETE /api/logs/:id
 app.delete('/api/logs/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
