@@ -63,6 +63,16 @@
 [2026-06-14 01:10] | File: bot/bot.js | Line: 93 | Keyword: Category-Overhaul | Status: Success | Change: Overhauled all categories on both the web frontend and bot select menu to use the exact list of six categories (fine, warning, orange, ban, inter_register, evidence), added 💸 flying bill emoji and formatting to fine announcement copy actions and web cards.
 [2026-06-14 01:15] | File: bot/bot.js | Line: 96 | Keyword: Penalty-Card-Emojis | Status: Success | Change: Updated Yellow Card and Red Card emojis to 🟨 and 🟥 respectively in mappings, select menu labels, and channel checks on both bot and web frontend to ensure shape and style consistency with the 🟧 Orange Card.
 [2026-06-14 01:20] | File: bot/bot.js | Line: 58 | Keyword: Bot-Crash-Prevention | Status: Success | Change: Created safeReply helper and wrapped all deferReply calls in try-catch blocks to prevent Discord.js Unknown interaction crashes when token expires during slow API responses or network delays.
+[2026-06-14 01:25] | File: frontend/src/App.jsx | Line: 680 | Keyword: Copy-Announcement-Exclude-Evidence | Status: Success | Change: Excluded evidence links and image attachments from the copied text only when using the "Copy Announcement" action, preserving evidence inclusion for the standard "Copy Log" action.
+[2026-06-14 01:30] | File: frontend/src/App.jsx | Line: 772 | Keyword: Copy-Announcement-Tag-Bottom | Status: Success | Change: Moved the Discord role/user tag from the top of the copied announcement text to the very bottom to align with the admin team's copy-pasting layout preference.
+[2026-06-14 01:35] | File: frontend/src/App.jsx | Line: 717 | Keyword: Copy-Announcement-No-CodeBlock-PlayerInfo | Status: Success | Change: Removed triple backticks Markdown code block format from PLAYER INFORMATION block specifically on the copied Announcement action to enable proper Discord user mentions/tags.
+[2026-06-14 01:40] | File: frontend/src/App.jsx | Line: 172 | Keyword: Playername-Standardization | Status: Success | Change: Standardized all variations of player name field keys (Name, Player, ผู้เล่น, ชื่อผู้เล่น, etc.) to exactly "Playername" to maintain strict formatting consistency in both UI render and copied Discord content.
+[2026-06-14 01:45] | File: frontend/src/App.jsx | Line: 966 | Keyword: Actual-Stats-Overhaul | Status: Success | Change: Updated the statistics computation and UI tiles at the top of the dashboard to display counts for all 6 overhauled categories (Total, Fine, Warning, Orange, Ban, Inter Register, Evidence) with their matching colors and Thai titles.
+
+
+
+
+
 
 
 

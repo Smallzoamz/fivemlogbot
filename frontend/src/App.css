@@ -346,7 +346,7 @@ body {
 /* STATS TILES */
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
 }
 
@@ -379,9 +379,12 @@ body {
 }
 
 .stat-card.total::before { background: var(--neon-cyan); }
-.stat-card.ticket::before { background: var(--neon-blue); }
-.stat-card.ban::before { background: var(--neon-red); }
+.stat-card.fine::before { background: var(--neon-green); }
 .stat-card.warning::before { background: var(--neon-amber); }
+.stat-card.orange::before { background: #f97316; }
+.stat-card.ban::before { background: var(--neon-red); }
+.stat-card.inter-register::before { background: var(--neon-purple); }
+.stat-card.evidence::before { background: var(--neon-blue); }
 
 .stat-card h3 {
   font-size: 0.8rem;

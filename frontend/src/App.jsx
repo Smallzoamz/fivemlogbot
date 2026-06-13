@@ -160,25 +160,38 @@ const getFormattedFields = (log) => {
   ];
   
   finalFields.forEach(f => {
-    const lowerKey = f.key.toLowerCase();
+    const lowerKey = f.key.toLowerCase().trim();
     if (reporterKeyPatterns.some(pattern => lowerKey === pattern || lowerKey.includes(pattern))) {
       f.isReporter = true;
+    }
+    
+    // Standardize player name key variations to "Playername"
+    if (
+      lowerKey === 'name' || 
+      lowerKey === 'playername' || 
+      lowerKey === 'player name' || 
+      lowerKey === 'nameplayer' || 
+      lowerKey === 'ผู้เล่น' || 
+      lowerKey === 'ชื่อผู้เล่น' || 
+      lowerKey === 'player'
+    ) {
+      f.key = 'Playername';
     }
   });
   
   // Check if player_name needs to be injected
   const hasPlayerName = finalFields.some(f => {
-    const k = f.key.toLowerCase();
-    return k === 'player' || k === 'player name' || k === 'nameplayer' || k === 'ผู้เล่น' || k === 'ชื่อผู้เล่น';
+    const k = f.key.toLowerCase().trim();
+    return k === 'playername' || k === 'player' || k === 'player name' || k === 'nameplayer' || k === 'ผู้เล่น' || k === 'ชื่อผู้เล่น' || k === 'name';
   });
   if (!hasPlayerName && log.player_name) {
-    const keyLabel = log.ticket_id ? 'ผู้แจ้ง' : 'ผู้เล่น';
+    const keyLabel = log.ticket_id ? 'ผู้แจ้ง' : 'Playername';
     finalFields.unshift({ key: keyLabel, value: log.player_name, isReporter: !!log.ticket_id });
   }
   
   // Check if identifier needs to be injected
   const hasIdentifier = finalFields.some(f => {
-    const k = f.key.toLowerCase();
+    const k = f.key.toLowerCase().trim();
     return k === 'identifier' || k === 'id/hex' || k === 'hex' || k === 'discord id' || k === 'steam hex' || k === 'steam id';
   });
   if (!hasIdentifier && log.identifier) {
@@ -189,14 +202,15 @@ const getFormattedFields = (log) => {
   // Separate player-related fields from others
   const playerInfoKeys = [
     'discord', 'discord id', 'steam id', 'steam hex', 'license', 'license (1)', 'license (2)', 
-    'ip address', 'identifier', 'id/hex', 'hex', 'ผู้เล่น', 'player', 'player name', 'nameplayer', 'ชื่อผู้เล่น', 'ผู้แจ้ง', 'discord id ผู้แจ้ง'
+    'ip address', 'identifier', 'id/hex', 'hex', 'ผู้เล่น', 'player', 'player name', 'nameplayer', 'ชื่อผู้เล่น', 'ผู้แจ้ง', 'discord id ผู้แจ้ง',
+    'playername', 'name'
   ];
   
   const playerFields = [];
   const otherFields = [];
   
   finalFields.forEach(f => {
-    const lowerKey = f.key.toLowerCase();
+    const lowerKey = f.key.toLowerCase().trim();
     if (playerInfoKeys.some(k => lowerKey === k || lowerKey.includes(k))) {
       playerFields.push(f);
     } else {
@@ -677,7 +691,7 @@ export default function App() {
     }
 
     let evidenceLines = '';
-    if (evidenceLinks.length > 0) {
+    if (evidenceLinks.length > 0 && !isAnnouncement) {
       evidenceLines += `\n📷 **หลักฐาน:**\n`;
       evidenceLinks.forEach(item => {
         evidenceLines += `[${item.shortName}](${item.url})\n`;
@@ -714,7 +728,11 @@ export default function App() {
       filteredPlayerFields.forEach(f => {
         playerText += `${f.key}: ${f.value}\n`;
       });
-      playerContent = `\n**[PLAYER INFORMATION]**\n\`\`\`\n${playerText.trim()}\n\`\`\`\n`;
+      if (isAnnouncement) {
+        playerContent = `\n**[PLAYER INFORMATION]**\n${playerText.trim()}\n`;
+      } else {
+        playerContent = `\n**[PLAYER INFORMATION]**\n\`\`\`\n${playerText.trim()}\n\`\`\`\n`;
+      }
     }
 
     let reasonContent = '';
@@ -746,8 +764,8 @@ export default function App() {
       typeLabel = `${labelEmoji} **[${fallbackLabel}]**`;
     }
 
-    // Prepend Discord Tag for announcement
-    let tagPrefix = '';
+    // Append Discord Tag for announcement to the bottom
+    let tagSuffix = '';
     if (isAnnouncement) {
       const getTagForLog = (category) => {
         const c = (category || '').toLowerCase();
@@ -769,12 +787,12 @@ export default function App() {
       const rawTag = getTagForLog(log.category);
       const formattedTag = formatDiscordTag(rawTag);
       if (formattedTag) {
-        tagPrefix = `${formattedTag}\n\n`;
+        tagSuffix = `\n\n${formattedTag}`;
       }
     }
 
-    const finalMsgText = `${tagPrefix}${typeLabel}
-${fineLine}${playerContent}${reasonContent}${evidenceLines}`;
+    const finalMsgText = `${typeLabel}
+${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
 
     navigator.clipboard.writeText(finalMsgText)
       .then(() => {
@@ -948,9 +966,12 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}`;
   const getStats = () => {
     return {
       total: logs.length,
-      tickets: logs.filter(l => l.category === 'ticket' || l.category === 'evidence').length,
-      bans: logs.filter(l => l.category === 'ban').length,
-      warnings: logs.filter(l => l.category === 'warning').length
+      fine: logs.filter(l => l.category.toLowerCase() === 'fine').length,
+      warning: logs.filter(l => l.category.toLowerCase() === 'warning').length,
+      orange: logs.filter(l => l.category.toLowerCase() === 'orange').length,
+      ban: logs.filter(l => l.category.toLowerCase() === 'ban').length,
+      inter_register: logs.filter(l => l.category.toLowerCase() === 'inter_register').length,
+      evidence: logs.filter(l => l.category.toLowerCase() === 'evidence').length
     };
   };
 
@@ -992,17 +1013,29 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}`;
             <h3>LOGS ทั้งหมด</h3>
             <span className="stat-value">{stats.total}</span>
           </div>
-          <div className="stat-card ticket">
-            <h3>ตั๋ว / หลักฐาน</h3>
-            <span className="stat-value">{stats.tickets}</span>
-          </div>
-          <div className="stat-card ban">
-            <h3>ประวัติแบน</h3>
-            <span className="stat-value">{stats.bans}</span>
+          <div className="stat-card fine">
+            <h3>💸 ประกาศปรับ</h3>
+            <span className="stat-value">{stats.fine}</span>
           </div>
           <div className="stat-card warning">
-            <h3>ประวัติการแจ้งเตือน</h3>
-            <span className="stat-value">{stats.warnings}</span>
+            <h3>🟨 ใบเหลือง</h3>
+            <span className="stat-value">{stats.warning}</span>
+          </div>
+          <div className="stat-card orange">
+            <h3>🟧 ใบส้ม</h3>
+            <span className="stat-value">{stats.orange}</span>
+          </div>
+          <div className="stat-card ban">
+            <h3>🟥 ใบแดง</h3>
+            <span className="stat-value">{stats.ban}</span>
+          </div>
+          <div className="stat-card inter-register">
+            <h3>✈️ ต่างประเทศ</h3>
+            <span className="stat-value">{stats.inter_register}</span>
+          </div>
+          <div className="stat-card evidence">
+            <h3>📷 เก็บหลักฐาน</h3>
+            <span className="stat-value">{stats.evidence}</span>
           </div>
         </section>
 
