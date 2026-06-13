@@ -491,12 +491,12 @@ body {
 
 /* FEED & LOG CARDS */
 .logs-feed {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 16px;
-  max-width: 520px; /* Bounded precisely for Discord Embed standard */
   width: 100%;
-  margin: 0 auto; /* Center the logs feed */
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 .loading-state, .empty-state {
@@ -513,10 +513,10 @@ body {
 .discord-message {
   background: #313338; /* Exact Discord Message Background */
   border-radius: 8px;
-  padding: 16px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
@@ -559,10 +559,10 @@ body {
   background: #2b2d31; /* Exact Discord Embed Background */
   border-left: 4px solid #10b981; /* Fallback accent line */
   border-radius: 4px;
-  padding: 12px 16px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -571,14 +571,14 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  gap: 12px;
 }
 
 .embed-left-side {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .embed-header {
@@ -601,8 +601,8 @@ body {
 }
 
 .embed-thumbnail {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   border-radius: 4px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -618,40 +618,42 @@ body {
 .embed-description {
   background: #1e1f22; /* Styled Grayish Box */
   color: #dbdee1;
-  padding: 10px 14px;
+  padding: 8px 10px;
   border-radius: 6px;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   line-height: 1.45;
   white-space: pre-wrap;
   border: 1px solid rgba(255, 255, 255, 0.02);
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 /* Embed Fields */
 .embed-fields {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .embed-field-box {
   background: #1e1f22; /* Darker box for fields */
-  padding: 10px 14px;
+  padding: 8px 10px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.02);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .field-label {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 700;
   color: #949ba4;
   letter-spacing: 0.5px;
 }
 
 .field-value {
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   color: #dbdee1;
   word-break: break-all;
   font-family: monospace;
@@ -717,7 +719,7 @@ body {
 
 .player-info-row {
   display: flex;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   line-height: 1.4;
   align-items: flex-start;
   gap: 6px;
@@ -732,6 +734,7 @@ body {
 .player-info-value {
   color: #dbdee1;
   word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 /* Date and Time grid */
@@ -749,7 +752,7 @@ body {
 }
 
 .embed-attachments-title {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: #949ba4;
   text-transform: uppercase;
@@ -758,7 +761,7 @@ body {
 
 .embed-images-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 8px;
 }
 
