@@ -69,6 +69,8 @@
 [2026-06-14 01:40] | File: frontend/src/App.jsx | Line: 172 | Keyword: Playername-Standardization | Status: Success | Change: Standardized all variations of player name field keys (Name, Player, ผู้เล่น, ชื่อผู้เล่น, etc.) to exactly "Playername" to maintain strict formatting consistency in both UI render and copied Discord content.
 [2026-06-14 01:45] | File: frontend/src/App.jsx | Line: 966 | Keyword: Actual-Stats-Overhaul | Status: Success | Change: Updated the statistics computation and UI tiles at the top of the dashboard to display counts for all 6 overhauled categories (Total, Fine, Warning, Orange, Ban, Inter Register, Evidence) with their matching colors and Thai titles.
 [2026-06-14 01:50] | File: bot/bot.js | Line: 48 | Keyword: Bot-Logging-Overhaul | Status: Success | Change: Integrated logs category separation under Discord parent category 1515425441610203146, including startup auto-creation of 8 log channels, log routing based on ticket category, process-wide error reporting to 🤖-bot-errors, ticket setup auto-injection, and 5-second auto-clearing for bot interaction replies.
+[2026-06-14 01:55] | File: bot/bot.js | Line: 167 | Keyword: Button-Ticket-Opening | Status: Success | Change: Revamped the ticket opening process to select the category directly from the outer support channel setup panel. Added 6 direct category buttons (excluding the custom option), implemented a centralized creator function, and updated the backend POST /bot/tickets API to register category on creation.
+
 
 
 

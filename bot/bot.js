@@ -164,6 +164,138 @@ async function ensureLogChannelsExist(guild) {
   }
 }
 
+// Helper: Get components and embed payload for the ticket setup panel
+function getTicketSetupPayload() {
+  const embed = new EmbedBuilder()
+    .setTitle('🎫 FiveM Server Support & Evidence Submission')
+    .setDescription('หากท่านต้องการเปิดเคส ส่งข้อมูลหลักฐาน แจ้งปัญหา หรือรายงานผู้เล่น\nกรุณาเลือกหมวดหมู่ที่ต้องการแจ้งเรื่องด้านล่างนี้เพื่อเปิดเคสคุยกับทีมงานเป็นการส่วนตัวครับ')
+    .setColor(0x5865F2)
+    .setTimestamp();
+
+  const row1 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('open_ticket_fine')
+      .setLabel('💸 ประกาศปรับ')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId('open_ticket_warning')
+      .setLabel('🟨 ใบเหลือง')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('open_ticket_orange')
+      .setLabel('🟧 ใบส้ม')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('open_ticket_ban')
+      .setLabel('🟥 ใบแดง')
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('open_ticket_inter_register')
+      .setLabel('✈️ ต่างประเทศ')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('open_ticket_evidence')
+      .setLabel('📷 เก็บหลักฐาน')
+      .setStyle(ButtonStyle.Primary)
+  );
+
+  return { embeds: [embed], components: [row1, row2] };
+}
+
+// Helper: Centralized function to create category-specific ticket channel and log it
+async function createTicketChannelAndLog(interaction, category, displayLabel) {
+  const { guild, user } = interaction;
+  const ticketChannelName = getNewTicketChannelName(`ticket-${user.username}`, category);
+
+  // Check if ticket category exists
+  let parentCategory = null;
+  if (CATEGORY_ID) {
+    parentCategory = guild.channels.cache.get(CATEGORY_ID);
+  }
+
+  // Create Channel with private permissions
+  const ticketChannel = await guild.channels.create({
+    name: ticketChannelName,
+    type: ChannelType.GuildText,
+    parent: parentCategory ? parentCategory.id : null,
+    permissionOverwrites: [
+      {
+        id: guild.roles.everyone.id,
+        deny: [PermissionFlagsBits.ViewChannel]
+      },
+      {
+        id: user.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.AttachFiles,
+          PermissionFlagsBits.EmbedLinks,
+          PermissionFlagsBits.ReadMessageHistory
+        ]
+      },
+      {
+        id: client.user.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.AttachFiles,
+          PermissionFlagsBits.EmbedLinks,
+          PermissionFlagsBits.ReadMessageHistory,
+          PermissionFlagsBits.ManageChannels
+        ]
+      }
+    ]
+  });
+
+  // Send Welcome Message inside the new channel
+  const welcomeEmbed = new EmbedBuilder()
+    .setTitle(`🎫 Ticket Open / เปิดเคส [${displayLabel}]`)
+    .setDescription(`สวัสดีครับ ${user}\nนี่คือห้องสำหรับแจ้งเรื่องร้องเรียน/ส่งข้อมูลหลักฐานกับทางแอดมินในหมวดหมู่ **[${displayLabel}]** ครับ\n\n**กรุณาทำตามขั้นตอนดังนี้:**\n1. 📷 **ส่งรายละเอียด** แนบรูปภาพ หรือลิงก์หลักฐานได้เลยครับ\n2. 🔒 แอดมินกดปุ่ม **"🔒 Close Ticket"** เมื่อดำเนินการแก้ไขเสร็จเพื่อเก็บบันทึกข้อมูลถาวรครับ`)
+    .setColor(0x00FF87)
+    .setTimestamp();
+
+  const closeRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('close_ticket')
+      .setLabel('🔒 Close Ticket (ปิดเคส)')
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  await ticketChannel.send({
+    content: `${user} | <@&${guild.roles.everyone.id}> (Admin Mode)`,
+    embeds: [welcomeEmbed],
+    components: [closeRow]
+  });
+
+  await safeReply(interaction, { content: `เปิดตั๋วหมวดหมู่ **${displayLabel}** เรียบร้อยแล้ว! กรุณาตรวจสอบห้องแชท <#${ticketChannel.id}>` }, 5000);
+
+  // Register Ticket on Backend API (Gracefully - non-blocking!)
+  try {
+    await api.post('/bot/tickets', {
+      channelId: ticketChannel.id,
+      userId: user.id,
+      username: user.username,
+      category: category
+    });
+  } catch (apiError) {
+    console.error('Failed to register ticket in API:', apiError.message);
+    await ticketChannel.send({
+      content: '⚠️ *ระบบฐานข้อมูลหลังบ้านไม่สามารถติดต่อได้ชั่วคราว ข้อมูลภาพและลิงก์หลักฐานในห้องนี้จะบันทึกเข้าหน้าเว็บไม่ได้ จนกว่าฐานข้อมูลจะกลับมาออนไลน์*'
+    });
+  }
+
+  // Send Log to Discord Log Channel if configured
+  const logEmbed = new EmbedBuilder()
+    .setTitle('🎫 Ticket Opened / เปิดเคสใหม่')
+    .setDescription(`ผู้เล่น **${user.username}** (ID: ${user.id}) ได้ทำการเปิดตั๋วเคสใหม่\n\n- **ห้องแชท:** <#${ticketChannel.id}>\n- **หมวดหมู่:** [${displayLabel}]\n- **เวลา:** ${new Date().toLocaleString('th-TH')}`)
+    .setColor(0x00FF87)
+    .setTimestamp();
+  await sendToCategoryLog(guild, category, logEmbed);
+}
+
 // Helper: Auto Setup ticket panel by deleting old and injecting a fresh message
 async function autoSetupTicket(guild) {
   try {
@@ -186,7 +318,7 @@ async function autoSetupTicket(guild) {
       const oldMessages = messages.filter(msg => {
         const isBot = msg.author.id === client.user.id;
         const hasButton = msg.components.some(row => 
-          row.components.some(comp => comp.customId === 'open_ticket')
+          row.components.some(comp => comp.customId && comp.customId.startsWith('open_ticket'))
         );
         return isBot && hasButton;
       });
@@ -196,20 +328,8 @@ async function autoSetupTicket(guild) {
       }
     }
 
-    const embed = new EmbedBuilder()
-      .setTitle('🎫 FiveM Server Support & Evidence Submission')
-      .setDescription('หากท่านต้องการเปิดเคส ส่งข้อมูลหลักฐาน แจ้งปัญหา หรือรายงานผู้เล่น\nกรุณาคลิกปุ่ม **"📩 Open Ticket (เปิดเคส)"** ด้านล่างนี้เพื่อพูดคุยกับทีมงานแอดมินเป็นการส่วนตัวครับ')
-      .setColor(0x5865F2)
-      .setTimestamp();
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('open_ticket')
-        .setLabel('📩 Open Ticket (เปิดเคส)')
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    await ticketChannel.send({ embeds: [embed], components: [row] });
+    const payload = getTicketSetupPayload();
+    await ticketChannel.send(payload);
     console.log(`Successfully injected fresh ticket setup in #${ticketChannel.name}`);
   } catch (err) {
     console.error('Failed to auto setup ticket:', err.message);
@@ -487,139 +607,23 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    if (customId === 'open_ticket') {
+    if (customId.startsWith('open_ticket_')) {
       try {
         await interaction.deferReply({ ephemeral: true });
 
-        const ticketChannelName = `ticket-${user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        const category = customId.replace('open_ticket_', '');
         
-        // Check if ticket category exists
-        let parentCategory = null;
-        if (CATEGORY_ID) {
-          parentCategory = guild.channels.cache.get(CATEGORY_ID);
-        }
+        const labels = {
+          fine: '💸 ประกาศปรับ',
+          warning: '🟨 ใบเหลือง',
+          orange: '🟧 ใบส้ม',
+          ban: '🟥 ใบแดง',
+          inter_register: '✈️ ลงทะเบียนต่างประเทศ',
+          evidence: '📷 เก็บหลักฐาน'
+        };
+        const displayLabel = labels[category] || category;
 
-        // Create Channel with private permissions
-        const ticketChannel = await guild.channels.create({
-          name: ticketChannelName,
-          type: ChannelType.GuildText,
-          parent: parentCategory ? parentCategory.id : null,
-          permissionOverwrites: [
-            {
-              id: guild.roles.everyone.id,
-              deny: [PermissionFlagsBits.ViewChannel]
-            },
-            {
-              id: user.id,
-              allow: [
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.AttachFiles,
-                PermissionFlagsBits.EmbedLinks,
-                PermissionFlagsBits.ReadMessageHistory
-              ]
-            },
-            {
-              id: client.user.id,
-              allow: [
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.AttachFiles,
-                PermissionFlagsBits.EmbedLinks,
-                PermissionFlagsBits.ReadMessageHistory,
-                PermissionFlagsBits.ManageChannels
-              ]
-            }
-          ]
-        });
-
-        // Send Welcome Message inside the new channel
-        const welcomeEmbed = new EmbedBuilder()
-          .setTitle('🎫 Ticket Open / เปิดเคสรับเรื่อง')
-          .setDescription(`สวัสดีครับ ${user}\nนี่คือห้องสำหรับแจ้งเรื่องร้องเรียน/ส่งข้อมูลหลักฐานกับทางแอดมินครับ\n\n**กรุณาทำตามขั้นตอนดังนี้:**\n1. 📂 **เลือกหมวดหมู่** ของเรื่องที่ต้องการแจ้งจากเมนูด้านล่างก่อนส่งข้อมูลครับ\n2. 📷 **ส่งรายละเอียด** แนบรูปภาพ หรือลิงก์หลักฐานได้เลยครับ\n3. 🔒 แอดมินกดปุ่ม **"🔒 Close Ticket"** เมื่อดำเนินการแก้ไขเสร็จเพื่อเก็บบันทึกข้อมูลถาวรครับ`)
-          .setColor(0x00FF87)
-          .setTimestamp();
-
-        const categoryMenuRow = new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId('select_category')
-            .setPlaceholder('📂 เลือกหมวดหมู่ของตั๋วร้องเรียน (Select Category)...')
-            .addOptions([
-              {
-                label: '💸 ประกาศปรับ (Fine)',
-                description: 'ประกาศปรับเงินผู้เล่นและบันทึกประวัติค่าปรับ',
-                value: 'fine'
-              },
-              {
-                label: '🟨 ใบเหลือง (Yellow Card)',
-                description: 'บันทึกประวัติการกระทำความผิดเพื่อตักเตือนผู้เล่น',
-                value: 'warning'
-              },
-              {
-                label: '🟧 ใบส้ม (Orange Card)',
-                description: 'ลงบันทึกคาดโทษใบส้มและบันทึกข้อมูล',
-                value: 'orange'
-              },
-              {
-                label: '🟥 ใบแดง (Red Card / Ban)',
-                description: 'แบนผู้เล่นทำผิดกฎเซิฟเวอร์ขั้นรุนแรง',
-                value: 'ban'
-              },
-              {
-                label: '✈️ ลงทะเบียนต่างประเทศ (Inter Register)',
-                description: 'ลงทะเบียนสำหรับผู้เล่นต่างประเทศที่ยื่นเรื่องขอเข้าเซิฟเวอร์',
-                value: 'inter_register'
-              },
-              {
-                label: '📷 เก็บหลักฐาน (Evidence)',
-                description: 'บันทึกและรวบรวมไฟล์รูปภาพ/ลิงก์หลักฐานของเคส',
-                value: 'evidence'
-              },
-              {
-                label: '➕ สร้างหมวดหมู่ใหม่ (Custom Category)',
-                description: 'สร้างและระบุหมวดหมู่ขึ้นมาเองใหม่เฉพาะเคสนี้',
-                value: 'custom'
-              }
-            ])
-        );
-
-        const closeRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('close_ticket')
-            .setLabel('🔒 Close Ticket (ปิดเคส)')
-            .setStyle(ButtonStyle.Danger)
-        );
-
-        await ticketChannel.send({
-          content: `${user} | <@&${guild.roles.everyone.id}> (Admin Mode)`,
-          embeds: [welcomeEmbed],
-          components: [categoryMenuRow, closeRow]
-        });
-
-        await safeReply(interaction, { content: `เปิดตั๋วเรียบร้อยแล้ว! กรุณาตรวจสอบห้องแชท <#${ticketChannel.id}>` }, 5000);
-
-        // Register Ticket on Backend API (Gracefully - non-blocking!)
-        try {
-          await api.post('/bot/tickets', {
-            channelId: ticketChannel.id,
-            userId: user.id,
-            username: user.username
-          });
-        } catch (apiError) {
-          console.error('Failed to register ticket in API:', apiError.message);
-          await ticketChannel.send({
-            content: '⚠️ *ระบบฐานข้อมูลหลังบ้านไม่สามารถติดต่อได้ชั่วคราว ข้อมูลภาพและลิงก์หลักฐานในห้องนี้จะบันทึกเข้าหน้าเว็บไม่ได้ จนกว่าฐานข้อมูลจะกลับมาออนไลน์*'
-          });
-        }
-
-        // Send Log to Discord Log Channel if configured
-        const logEmbed = new EmbedBuilder()
-          .setTitle('🎫 Ticket Opened / เปิดเคสใหม่')
-          .setDescription(`ผู้เล่น **${user.username}** (ID: ${user.id}) ได้ทำการเปิดตั๋วเคสใหม่\n\n- **ห้องแชท:** <#${ticketChannel.id}>\n- **เวลา:** ${new Date().toLocaleString('th-TH')}`)
-          .setColor(0x00FF87)
-          .setTimestamp();
-        await sendToCategoryLog(guild, 'tickets', logEmbed);
-
+        await createTicketChannelAndLog(interaction, category, displayLabel);
       } catch (error) {
         console.error('Error opening ticket:', error);
         await safeReply(interaction, { content: 'ไม่สามารถเปิดตั๋วได้ในขณะนี้ กรุณาติดต่อแอดมินโดยตรง' });
@@ -803,20 +807,8 @@ client.on('messageCreate', async (message) => {
 
   if (message.content === '!setup-ticket') {
     try {
-      const embed = new EmbedBuilder()
-        .setTitle('🎫 FiveM Server Support & Evidence Submission')
-        .setDescription('หากท่านต้องการเปิดเคส ส่งข้อมูลหลักฐาน แจ้งปัญหา หรือรายงานผู้เล่น\nกรุณาคลิกปุ่ม **"📩 Open Ticket (เปิดเคส)"** ด้านล่างนี้เพื่อพูดคุยกับทีมงานแอดมินเป็นการส่วนตัวครับ')
-        .setColor(0x5865F2)
-        .setTimestamp();
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('open_ticket')
-          .setLabel('📩 Open Ticket (เปิดเคส)')
-          .setStyle(ButtonStyle.Primary)
-      );
-
-      await message.channel.send({ embeds: [embed], components: [row] });
+      const payload = getTicketSetupPayload();
+      await message.channel.send(payload);
       await message.delete().catch(() => {});
     } catch (err) {
       console.error('Error with !setup-ticket command:', err);

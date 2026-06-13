@@ -331,7 +331,7 @@ app.delete('/api/logs/:id', authenticateToken, async (req, res) => {
 
 // 1. Create Ticket
 app.post('/api/bot/tickets', authenticateBot, async (req, res) => {
-  const { channelId, userId, username } = req.body;
+  const { channelId, userId, username, category } = req.body;
   const created_at = new Date().toISOString();
 
   if (!channelId || !userId || !username) {
@@ -347,6 +347,7 @@ app.post('/api/bot/tickets', authenticateBot, async (req, res) => {
         user_id: userId,
         username: username,
         status: 'open',
+        category: category || 'ticket',
         created_at: created_at
       });
 
