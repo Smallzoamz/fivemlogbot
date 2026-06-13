@@ -45,6 +45,19 @@ const client = new Client({
   ]
 });
 
+const LOGS_PARENT_CATEGORY_ID = '1515425441610203146';
+
+const LOG_CHANNELS_CONFIG = [
+  { key: 'fine', name: '💸-log-fine' },
+  { key: 'warning', name: '🟨-log-warning' },
+  { key: 'orange', name: '🟧-log-orange' },
+  { key: 'ban', name: '🟥-log-ban' },
+  { key: 'inter_register', name: '✈️-log-inter' },
+  { key: 'evidence', name: '📷-log-evidence' },
+  { key: 'tickets', name: '🎫-log-tickets' },
+  { key: 'errors', name: '🤖-bot-errors' }
+];
+
 // Helper to send logs to Discord Log Channel if configured
 async function sendToLogChannel(guild, embed) {
   if (!LOG_CHANNEL_ID) return;
@@ -58,8 +71,153 @@ async function sendToLogChannel(guild, embed) {
   }
 }
 
+// Helper: Resolve category from channel name
+function getCategoryFromChannelName(channelName) {
+  const parts = channelName.toLowerCase().split('-');
+  if (parts.length > 1) {
+    const prefix = parts[0];
+    if (prefix === '🟥') return 'ban';
+    if (prefix === '🟨') return 'warning';
+    if (prefix === '🟧') return 'orange';
+    if (prefix === '💸') return 'fine';
+    if (prefix === '✈️') return 'inter_register';
+    if (prefix === '📷') return 'evidence';
+    if (prefix === '📂') {
+      return 'tickets'; // Custom categories logged as general tickets logs
+    }
+  }
+  return 'tickets';
+}
+
+// Helper: Send log to category log channel
+async function sendToCategoryLog(guild, category, embed) {
+  try {
+    const parentCategory = guild.channels.cache.get(LOGS_PARENT_CATEGORY_ID) || await guild.channels.fetch(LOGS_PARENT_CATEGORY_ID).catch(() => null);
+    if (!parentCategory) {
+      // Fallback
+      await sendToLogChannel(guild, embed);
+      return;
+    }
+
+    const config = LOG_CHANNELS_CONFIG.find(c => c.key === category);
+    const channelName = config ? config.name : '🎫-log-tickets';
+
+    let channel = guild.channels.cache.find(c => c.parentId === LOGS_PARENT_CATEGORY_ID && c.name === channelName);
+    if (!channel) {
+      channel = await guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        parent: LOGS_PARENT_CATEGORY_ID
+      });
+    }
+
+    if (channel) {
+      await channel.send({ embeds: [embed] });
+    }
+  } catch (err) {
+    console.error(`Failed to send category log for ${category}:`, err.message);
+    await sendToLogChannel(guild, embed);
+  }
+}
+
+// Helper: Send bot error stack trace to Discord errors channel
+async function sendBotErrorLog(error) {
+  try {
+    // Get first guild client is joined to
+    const guild = client.guilds.cache.first();
+    if (!guild) return;
+
+    const errorEmbed = new EmbedBuilder()
+      .setTitle('🤖 Bot Error / รายงานปัญหาบอท')
+      .setDescription(`**รายละเอียดความผิดพลาด:**\n\`\`\`js\n${error?.stack || error?.message || error || 'Unknown Error'}\n\`\`\``)
+      .setColor(0xFF0000)
+      .setTimestamp();
+
+    await sendToCategoryLog(guild, 'errors', errorEmbed);
+  } catch (err) {
+    console.error('Failed to log bot error to Discord:', err.message);
+  }
+}
+
+// Helper: Ensure log channels exist under parent category
+async function ensureLogChannelsExist(guild) {
+  try {
+    const parentCategory = guild.channels.cache.get(LOGS_PARENT_CATEGORY_ID) || await guild.channels.fetch(LOGS_PARENT_CATEGORY_ID).catch(() => null);
+    if (!parentCategory) {
+      console.log(`Logs parent category ${LOGS_PARENT_CATEGORY_ID} not found in guild ${guild.name}. Skipping auto creation.`);
+      return;
+    }
+
+    for (const config of LOG_CHANNELS_CONFIG) {
+      let channel = guild.channels.cache.find(c => c.parentId === LOGS_PARENT_CATEGORY_ID && c.name === config.name);
+      if (!channel) {
+        await guild.channels.create({
+          name: config.name,
+          type: ChannelType.GuildText,
+          parent: LOGS_PARENT_CATEGORY_ID
+        });
+        console.log(`Auto-created missing category log channel: ${config.name}`);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to ensure log channels exist:', err.message);
+  }
+}
+
+// Helper: Auto Setup ticket panel by deleting old and injecting a fresh message
+async function autoSetupTicket(guild) {
+  try {
+    const parentId = process.env.TICKET_CATEGORY_ID || CATEGORY_ID;
+    if (!parentId) return;
+
+    let ticketChannel = guild.channels.cache.find(c => c.parentId === parentId && c.type === ChannelType.GuildText && c.name === 'ticket');
+    if (!ticketChannel) {
+      ticketChannel = guild.channels.cache.find(c => c.type === ChannelType.GuildText && c.name === 'ticket');
+    }
+
+    if (!ticketChannel) {
+      console.log(`No 'ticket' text channel found in guild ${guild.name}. Skipping auto setup.`);
+      return;
+    }
+
+    // Fetch up to 50 messages to delete old bot setup messages
+    const messages = await ticketChannel.messages.fetch({ limit: 50 }).catch(() => null);
+    if (messages) {
+      const oldMessages = messages.filter(msg => {
+        const isBot = msg.author.id === client.user.id;
+        const hasButton = msg.components.some(row => 
+          row.components.some(comp => comp.customId === 'open_ticket')
+        );
+        return isBot && hasButton;
+      });
+
+      for (const [id, msg] of oldMessages) {
+        await msg.delete().catch(() => null);
+      }
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle('🎫 FiveM Server Support & Evidence Submission')
+      .setDescription('หากท่านต้องการเปิดเคส ส่งข้อมูลหลักฐาน แจ้งปัญหา หรือรายงานผู้เล่น\nกรุณาคลิกปุ่ม **"📩 Open Ticket (เปิดเคส)"** ด้านล่างนี้เพื่อพูดคุยกับทีมงานแอดมินเป็นการส่วนตัวครับ')
+      .setColor(0x5865F2)
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('open_ticket')
+        .setLabel('📩 Open Ticket (เปิดเคส)')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    await ticketChannel.send({ embeds: [embed], components: [row] });
+    console.log(`Successfully injected fresh ticket setup in #${ticketChannel.name}`);
+  } catch (err) {
+    console.error('Failed to auto setup ticket:', err.message);
+  }
+}
+
 // Helper to safely reply or edit reply to interactions without crashing on expired tokens
-async function safeReply(interaction, options) {
+async function safeReply(interaction, options, autoDeleteDelay = null) {
   try {
     if (interaction.deferred) {
       await interaction.editReply(options);
@@ -67,6 +225,16 @@ async function safeReply(interaction, options) {
       await interaction.followUp(options);
     } else {
       await interaction.reply(options);
+    }
+
+    if (autoDeleteDelay) {
+      setTimeout(async () => {
+        try {
+          await interaction.deleteReply().catch(() => null);
+        } catch (err) {
+          // Silent catch
+        }
+      }, autoDeleteDelay);
     }
   } catch (err) {
     console.error('Failed to safely reply to interaction:', err.message);
@@ -168,6 +336,12 @@ client.once('ready', async () => {
   } catch (error) {
     console.error('Error registering slash commands:', error);
   }
+
+  // Ensure all log channels exist and auto setup ticket panels in all guilds
+  for (const [guildId, guild] of client.guilds.cache) {
+    await ensureLogChannelsExist(guild);
+    await autoSetupTicket(guild);
+  }
 });
 
 // Handle Commands and Buttons (interactions)
@@ -191,7 +365,7 @@ client.on('interactionCreate', async (interaction) => {
         );
 
         await interaction.channel.send({ embeds: [embed], components: [row] });
-        await safeReply(interaction, { content: 'สร้างโพสต์ระบบตั๋วเรียบร้อยแล้ว!' });
+        await safeReply(interaction, { content: 'สร้างโพสต์ระบบตั๋วเรียบร้อยแล้ว!' }, 5000);
       } catch (err) {
         console.error('Error in setup-ticket command:', err.message);
       }
@@ -238,7 +412,7 @@ client.on('interactionCreate', async (interaction) => {
           
           await safeReply(interaction, {
             content: `📂 ตั้งค่าหมวดหมู่ของตั๋วร้องเรียนนี้เป็น: **[${selectedLabel}]** เรียบร้อยแล้ว ข้อมูลทั้งหมดจะถูกส่งลงหน้าเว็บในแท็บนี้`
-          });
+          }, 5000);
 
           // Log to Discord Log Channel
           const categoryLogEmbed = new EmbedBuilder()
@@ -246,7 +420,7 @@ client.on('interactionCreate', async (interaction) => {
             .setDescription(`ตั๋วเคส **#${interaction.channel.name}** ถูกจัดหมวดหมู่เป็น: **[${selectedLabel}]**\n- **ตั้งโดย:** ${user.username}`)
             .setColor(0x00FF87)
             .setTimestamp();
-          await sendToLogChannel(guild, categoryLogEmbed);
+          await sendToCategoryLog(guild, category, categoryLogEmbed);
         } catch (err) {
           console.error('Failed to update ticket category:', err.message);
           await safeReply(interaction, { content: 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิฟเวอร์ API หลังบ้านเพื่อตั้งค่าหมวดหมู่' });
@@ -273,7 +447,7 @@ client.on('interactionCreate', async (interaction) => {
 
         await safeReply(interaction, {
           content: `✅ สร้างและตั้งค่าตั๋วร้องเรียนนี้เป็นหมวดหมู่ใหม่: **[📂 ${customCategory}]** เรียบร้อยแล้ว ข้อมูลทั้งหมดจะถูกบันทึกเข้าหน้าเว็บแท็บนี้อัตโนมัติ!`
-        });
+        }, 5000);
 
         // Log to Discord Log Channel
         const categoryLogEmbed = new EmbedBuilder()
@@ -281,7 +455,7 @@ client.on('interactionCreate', async (interaction) => {
           .setDescription(`ตั๋วเคส **#${interaction.channel.name}** ตั้งหมวดหมู่ใหม่เป็น: **[📂 ${customCategory}]**\n- **สร้างโดย:** ${interaction.user.username}`)
           .setColor(0x00FF87)
           .setTimestamp();
-        await sendToLogChannel(interaction.guild, categoryLogEmbed);
+        await sendToCategoryLog(interaction.guild, 'tickets', categoryLogEmbed);
       } catch (err) {
         console.error('Failed to update custom ticket category:', err.message);
         await safeReply(interaction, { content: 'เกิดข้อผิดพลาดในการบันทึกหมวดหมู่ใหม่ลงเซิฟเวอร์ API' });
@@ -422,7 +596,7 @@ client.on('interactionCreate', async (interaction) => {
           components: [categoryMenuRow, closeRow]
         });
 
-        await safeReply(interaction, { content: `เปิดตั๋วเรียบร้อยแล้ว! กรุณาตรวจสอบห้องแชท <#${ticketChannel.id}>` });
+        await safeReply(interaction, { content: `เปิดตั๋วเรียบร้อยแล้ว! กรุณาตรวจสอบห้องแชท <#${ticketChannel.id}>` }, 5000);
 
         // Register Ticket on Backend API (Gracefully - non-blocking!)
         try {
@@ -444,7 +618,7 @@ client.on('interactionCreate', async (interaction) => {
           .setDescription(`ผู้เล่น **${user.username}** (ID: ${user.id}) ได้ทำการเปิดตั๋วเคสใหม่\n\n- **ห้องแชท:** <#${ticketChannel.id}>\n- **เวลา:** ${new Date().toLocaleString('th-TH')}`)
           .setColor(0x00FF87)
           .setTimestamp();
-        await sendToLogChannel(guild, logEmbed);
+        await sendToCategoryLog(guild, 'tickets', logEmbed);
 
       } catch (error) {
         console.error('Error opening ticket:', error);
@@ -477,7 +651,7 @@ client.on('interactionCreate', async (interaction) => {
           .setDescription(`ตั๋วเคส **#${channel.name}** ถูกปิดลงเรียบร้อย\n\n- **ปิดโดย:** ${user.username}\n- **จำนวนรายการที่บันทึก:** ${response.data.logCount} รายการ\n- **ลิงก์หน้าเว็บ:** ${process.env.FRONTEND_URL || 'http://localhost:5173'}`)
           .setColor(0xFF2E93)
           .setTimestamp();
-        await sendToLogChannel(guild, closeLogEmbed);
+        await sendToCategoryLog(guild, getCategoryFromChannelName(channel.name), closeLogEmbed);
 
         // Wait 5 seconds and delete channel
         setTimeout(async () => {
@@ -612,7 +786,7 @@ client.on('messageCreate', async (message) => {
             const linkList = extractedLinks.map((link, idx) => `[ลิงก์อ้างอิง ${String(idx + 1).padStart(2, '0')}](${link})`);
             evidenceEmbed.addFields({ name: 'ลิงก์ที่แนบ', value: linkList.join('\n') });
           }
-          await sendToLogChannel(message.guild, evidenceEmbed);
+          await sendToCategoryLog(message.guild, 'evidence', evidenceEmbed);
         }
       }
 
@@ -648,6 +822,22 @@ client.on('messageCreate', async (message) => {
       console.error('Error with !setup-ticket command:', err);
     }
   }
+});
+
+// Global Client & Process Error Handlers to log Bot Issues to Discord errors channel
+client.on('error', async (error) => {
+  console.error('Discord client error:', error);
+  await sendBotErrorLog(error);
+});
+
+process.on('unhandledRejection', async (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  await sendBotErrorLog(reason);
+});
+
+process.on('uncaughtException', async (error) => {
+  console.error('Uncaught Exception:', error);
+  await sendBotErrorLog(error);
 });
 
 // Login Discord Bot

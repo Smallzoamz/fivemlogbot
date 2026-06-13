@@ -68,6 +68,8 @@
 [2026-06-14 01:35] | File: frontend/src/App.jsx | Line: 717 | Keyword: Copy-Announcement-No-CodeBlock-PlayerInfo | Status: Success | Change: Removed triple backticks Markdown code block format from PLAYER INFORMATION block specifically on the copied Announcement action to enable proper Discord user mentions/tags.
 [2026-06-14 01:40] | File: frontend/src/App.jsx | Line: 172 | Keyword: Playername-Standardization | Status: Success | Change: Standardized all variations of player name field keys (Name, Player, ผู้เล่น, ชื่อผู้เล่น, etc.) to exactly "Playername" to maintain strict formatting consistency in both UI render and copied Discord content.
 [2026-06-14 01:45] | File: frontend/src/App.jsx | Line: 966 | Keyword: Actual-Stats-Overhaul | Status: Success | Change: Updated the statistics computation and UI tiles at the top of the dashboard to display counts for all 6 overhauled categories (Total, Fine, Warning, Orange, Ban, Inter Register, Evidence) with their matching colors and Thai titles.
+[2026-06-14 01:50] | File: bot/bot.js | Line: 48 | Keyword: Bot-Logging-Overhaul | Status: Success | Change: Integrated logs category separation under Discord parent category 1515425441610203146, including startup auto-creation of 8 log channels, log routing based on ticket category, process-wide error reporting to 🤖-bot-errors, ticket setup auto-injection, and 5-second auto-clearing for bot interaction replies.
+
 
 
 
