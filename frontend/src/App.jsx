@@ -313,44 +313,39 @@ export default function App() {
     const seconds = String(logDate.getSeconds()).padStart(2, '0');
     const timeStr = `${hours}:${minutes}:${seconds}`;
 
-    const dividerLine = `━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
-
     let markdownContent = '';
-    markdownContent += `${dividerLine}\n`;
-    markdownContent += `**[${log.category.toUpperCase()} DETAILS]**\n\n`;
 
-    // 1. Description (general details text)
+    // 1. Details Block (description and other non-player fields)
+    let detailsText = '';
     if (description) {
-      const descLines = description.split('\n').map(line => `**${line.trim()}**`).join('\n');
-      markdownContent += `${descLines}\n\n`;
+      detailsText += `${description}\n`;
     }
-
-    // Filter out fields marked as reporter details
     const filteredOtherFields = otherFields.filter(f => !f.isReporter);
-    const filteredPlayerFields = playerFields.filter(f => !f.isReporter);
-
-    // 2. Other Fields (like coordinates, distance)
     filteredOtherFields.forEach(f => {
-      markdownContent += `**${f.key.toUpperCase()}:** ${f.value}\n`;
+      detailsText += `${f.key.toUpperCase()}: ${f.value}\n`;
     });
-    if (filteredOtherFields.length > 0) markdownContent += '\n';
 
-    // 3. Player fields EXCLUDING reporter information (ผู้แจ้ง / คนแจ้ง)
-    if (filteredPlayerFields.length > 0) {
-      markdownContent += `**[PLAYER INFORMATION]**\n`;
-      filteredPlayerFields.forEach(f => {
-        markdownContent += `  • **${f.key}:** ${f.value}\n`;
-      });
-      markdownContent += '\n';
+    if (detailsText.trim()) {
+      markdownContent += `\n**[${log.category.toUpperCase()} DETAILS]**\n\`\`\`\n${detailsText.trim()}\n\`\`\`\n`;
     }
 
-    // 4. Date and Time
-    markdownContent += `**DATE (LOCAL):** ${dateStr}\n`;
-    markdownContent += `**TIME (LOCAL):** ${timeStr}\n\n`;
+    // 2. Player Information Block
+    const filteredPlayerFields = playerFields.filter(f => !f.isReporter);
+    if (filteredPlayerFields.length > 0) {
+      let playerText = '';
+      filteredPlayerFields.forEach(f => {
+        playerText += `${f.key}: ${f.value}\n`;
+      });
+      markdownContent += `\n**[PLAYER INFORMATION]**\n\`\`\`\n${playerText.trim()}\n\`\`\`\n`;
+    }
 
-    // 5. Admin details
-    markdownContent += `✍️ **บันทึกโดย:** ${log.created_by}\n`;
-    markdownContent += dividerLine;
+    // 3. Record Info Block (Date, Time, Admin)
+    let metaText = '';
+    metaText += `DATE (LOCAL): ${dateStr}\n`;
+    metaText += `TIME (LOCAL): ${timeStr}\n`;
+    metaText += `RECORDED BY: ${log.created_by}\n`;
+
+    markdownContent += `\n**[RECORD INFO]**\n\`\`\`\n${metaText.trim()}\n\`\`\`\n`;
 
     // Attachments & reference links outside of code blocks for clickability
     const attachmentLines = log.attachments && log.attachments.length > 0 

@@ -32,4 +32,5 @@
 [2026-06-13 14:02] | File: bot/bot.js | Line: 475 | Keyword: Bot-Supabase-Url | Status: Success | Change: Updated attachment url parser in Discord Bot to handle absolute HTTP URLs from Supabase Storage instead of assuming local folder paths.
 [2026-06-13 14:02] | File: backend/.env | Line: 9 | Keyword: Env-Template | Status: Success | Change: Appended template environment variables for SUPABASE_URL and SUPABASE_KEY to backend env file.
 [2026-06-13 14:40] | File: frontend/src/App.jsx | Line: 126 | Keyword: Auth-Flash-Fix | Status: Success | Change: Added loadingUser state and visual verification screen to prevent the login screen from flashing when a logged-in user refreshes the page.
-
+[2026-06-13 15:06] | File: frontend/dist/assets/index-ZVGg2AcJ.js | Line: 1 | Keyword: Rebuild | Status: Success | Change: Rebuilt React production assets using Vite to ensure that the removed ANSI color codes and the new clean markdown formatting are reflected in the production distribution directory.
+[2026-06-13 15:16] | File: frontend/src/App.jsx | Line: 301 | Keyword: Formatting-Update | Status: Success | Change: Restructured copyToDiscord formatting in frontend UI to separate details, player information, and record metadata into distinct plain monospace blocks (using triple backticks) for a clean visual look in Discord.
