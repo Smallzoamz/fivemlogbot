@@ -313,17 +313,17 @@ export default function App() {
       if (ipCountries[ip]) continue;
       
       try {
-        const res = await fetch(`https://ip-api.com/json/${ip}`);
+        const res = await fetch(`https://freeipapi.com/api/json/${ip}`);
         const data = await res.json();
-        if (data && data.status === 'success') {
+        if (data && data.countryCode) {
           setIpCountries(prev => ({
             ...prev,
             [ip]: {
               countryCode: data.countryCode,
-              country: data.country,
-              lat: data.lat,
-              lon: data.lon,
-              city: data.city
+              country: data.countryName || 'Unknown',
+              lat: data.latitude || 0,
+              lon: data.longitude || 0,
+              city: data.cityName || ''
             }
           }));
         }
@@ -922,7 +922,7 @@ ${playerContent}${reasonContent}${evidenceLines}`;
 
                   {/* DISCORD EMBED */}
                   <div className="discord-embed" style={{ borderLeftColor: styles.text }}>
-                    {log.category === 'inter_register' && isForeignIP && (
+                    {log.category.toLowerCase() === 'inter_register' && isForeignIP && (
                       <div className="foreign-ip-verified-badge" title={`IP: ${ip} (Country: ${ipInfo.country})`}>
                         <Globe className="w-3.5 h-3.5 mr-1 text-emerald-400 animate-pulse" />
                         <span>ต่างประเทศจริง ({ipInfo.country})</span>
@@ -947,7 +947,7 @@ ${playerContent}${reasonContent}${evidenceLines}`;
                         )}
 
                         {/* EMBED MAP FOR INTER REGISTER */}
-                        {log.category === 'inter_register' && ipInfo && ipInfo.lat && ipInfo.lon && (
+                        {log.category.toLowerCase() === 'inter_register' && ipInfo && ipInfo.lat && ipInfo.lon && (
                           <div className="embed-map-container">
                             <div className="embed-map-header">
                               <Globe className="w-3.5 h-3.5 mr-1 text-neon-cyan" />
