@@ -575,7 +575,7 @@ export default function App() {
       
       let mapLine = '';
       if (ipInfo && ipInfo.lat && ipInfo.lon) {
-        const mapUrl = `https://static-maps.yandex.ru/1.x/?ll=${ipInfo.lon},${ipInfo.lat}&z=7&l=map&size=500,300&pt=${ipInfo.lon},${ipInfo.lat},pm2gnl`;
+        const mapUrl = `https://static-maps.yandex.ru/1.x/?ll=${ipInfo.lon},${ipInfo.lat}&z=7&l=map&size=500,300&pt=${ipInfo.lon},${ipInfo.lat},pm2gnl&lang=en_US`;
         mapLine = `\n📍 **แผนที่พิกัดประเทศผู้เล่น (Verified IP Location):**\n${mapUrl}\n`;
       }
       
@@ -957,7 +957,7 @@ ${playerContent}${reasonContent}${evidenceLines}`;
                             </div>
                             <div className="embed-map-wrapper">
                               <img 
-                                src={`https://static-maps.yandex.ru/1.x/?ll=${ipInfo.lon},${ipInfo.lat}&z=7&l=map&size=500,280&pt=${ipInfo.lon},${ipInfo.lat},pm2gnl`} 
+                                src={`https://static-maps.yandex.ru/1.x/?ll=${ipInfo.lon},${ipInfo.lat}&z=7&l=map&size=500,280&pt=${ipInfo.lon},${ipInfo.lat},pm2gnl&lang=en_US`} 
                                 alt="Player Location Map" 
                                 className="embed-map-img" 
                               />
