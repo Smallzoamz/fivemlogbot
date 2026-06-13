@@ -58,6 +58,36 @@ async function sendToLogChannel(guild, embed) {
   }
 }
 
+// Helper: Extract a short display name from a long URL
+function getShortFileName(url, index) {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const segments = pathname.split('/').filter(Boolean);
+    const lastSegment = segments[segments.length - 1] || '';
+    const extMatch = lastSegment.match(/\.(png|jpg|jpeg|gif|webp|bmp|svg|mp4|mov|avi|pdf)$/i);
+    const ext = extMatch ? extMatch[0] : '.png';
+    return `image${String(index + 1).padStart(2, '0')}${ext}`;
+  } catch {
+    return `file${String(index + 1).padStart(2, '0')}`;
+  }
+}
+
+// Helper: Check if details content contains close ticket keywords to skip storing it
+function shouldSkipLog(text) {
+  if (!text) return false;
+  const lowercaseText = text.toLowerCase();
+  const skipKeywords = [
+    'ปิดทิกเกทสำเร็จ',
+    'ปิดทิกเก็ตสำเร็จ',
+    'ปิดเคสสำเร็จ',
+    'ปิดเคสเรียบร้อย',
+    'ปิดตั๋วเคส',
+    'ticket closed'
+  ];
+  return skipKeywords.some(keyword => lowercaseText.includes(keyword));
+}
+
 // Configure Axios instance for backend communications
 const api = axios.create({
   baseURL: API_URL,
@@ -142,7 +172,8 @@ client.on('interactionCreate', async (interaction) => {
             warning: '⚠️ ตักเตือนผู้เล่น (Warning)',
             bug_report: '🐛 แจ้งพบบั๊ก (Bug Report)',
             donation: '💎 โดเนท (Donation)',
-            note: '📝 บันทึกทั่วไป (Note)'
+            note: '📝 บันทึกทั่วไป (Note)',
+            inter_register: '✈️ ลงทะเบียนต่างประเทศ (Inter Register)'
           };
           const selectedLabel = labels[category] || category;
           
@@ -300,6 +331,11 @@ client.on('interactionCreate', async (interaction) => {
                 value: 'note'
               },
               {
+                label: '✈️ ลงทะเบียนต่างประเทศ (Inter Register)',
+                description: 'ลงทะเบียนสำหรับผู้เล่นต่างประเทศที่ยื่นเรื่องขอเข้าเซิฟเวอร์',
+                value: 'inter_register'
+              },
+              {
                 label: '➕ สร้างหมวดหมู่ใหม่ (Custom Category)',
                 description: 'สร้างและระบุหมวดหมู่ขึ้นมาเองใหม่เฉพาะเคสนี้',
                 value: 'custom'
@@ -403,6 +439,7 @@ client.on('messageCreate', async (message) => {
   
   // Identify if this is a ticket channel (either by database validation or channel name prefix)
   if (channel.type === ChannelType.GuildText && channel.name.startsWith('ticket-')) {
+    if (shouldSkipLog(message.content)) return;
     try {
       const localAttachments = [];
       const extractedLinks = [];
@@ -473,12 +510,17 @@ client.on('messageCreate', async (message) => {
             .setTimestamp();
 
           if (localAttachments.length > 0) {
-            const fileLinks = localAttachments.map(file => file.startsWith('http') ? file : `${API_URL.replace('/api', '')}/uploads/${file}`);
+            const fileLinks = localAttachments.map((file, idx) => {
+              const url = file.startsWith('http') ? file : `${API_URL.replace('/api', '')}/uploads/${file}`;
+              return `[${getShortFileName(url, idx)}](${url})`;
+            });
+            const firstRawLink = localAttachments[0].startsWith('http') ? localAttachments[0] : `${API_URL.replace('/api', '')}/uploads/${localAttachments[0]}`;
             evidenceEmbed.addFields({ name: 'รูปภาพหลักฐาน', value: fileLinks.join('\n') });
-            evidenceEmbed.setThumbnail(fileLinks[0]);
+            evidenceEmbed.setThumbnail(firstRawLink);
           }
           if (extractedLinks.length > 0) {
-            evidenceEmbed.addFields({ name: 'ลิงก์ที่แนบ', value: extractedLinks.join('\n') });
+            const linkList = extractedLinks.map((link, idx) => `[ลิงก์อ้างอิง ${String(idx + 1).padStart(2, '0')}](${link})`);
+            evidenceEmbed.addFields({ name: 'ลิงก์ที่แนบ', value: linkList.join('\n') });
           }
           await sendToLogChannel(message.guild, evidenceEmbed);
         }

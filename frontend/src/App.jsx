@@ -14,8 +14,97 @@ import {
   ExternalLink,
   Check,
   User as UserIcon,
-  Shield
+  Shield,
+  Globe
 } from 'lucide-react';
+
+// Helper: Extract a short display name from a long URL
+const getShortFileName = (url, index) => {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const segments = pathname.split('/').filter(Boolean);
+    const lastSegment = segments[segments.length - 1] || '';
+    const extMatch = lastSegment.match(/\.(png|jpg|jpeg|gif|webp|bmp|svg|mp4|mov|avi|pdf)$/i);
+    const ext = extMatch ? extMatch[0] : '.png';
+    return `image${String(index + 1).padStart(2, '0')}${ext}`;
+  } catch {
+    return `file${String(index + 1).padStart(2, '0')}`;
+  }
+};
+
+// Helper: Check if a log's details/content indicate a closed ticket message to filter it out
+const shouldSkipLog = (text) => {
+  if (!text) return false;
+  const lowercaseText = text.toLowerCase();
+  const skipKeywords = [
+    'ปิดทิกเกทสำเร็จ',
+    'ปิดทิกเก็ตสำเร็จ',
+    'ปิดเคสสำเร็จ',
+    'ปิดเคสเรียบร้อย',
+    'ปิดตั๋วเคส',
+    'ticket closed'
+  ];
+  return skipKeywords.some(keyword => lowercaseText.includes(keyword));
+};
+
+// Helper: Extract IP address from fields or text
+const extractIpAddress = (log, playerFields, otherFields) => {
+  const ipRegex = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/;
+  
+  for (const f of otherFields) {
+    const match = f.value.match(ipRegex);
+    if (match) return match[0];
+  }
+  for (const f of playerFields) {
+    const match = f.value.match(ipRegex);
+    if (match) return match[0];
+  }
+  if (log.details) {
+    const match = log.details.match(ipRegex);
+    if (match) return match[0];
+  }
+  if (log.identifier) {
+    const match = log.identifier.match(ipRegex);
+    if (match) return match[0];
+  }
+  return null;
+};
+
+// Helper: Render text with long URLs replaced by short clickable links
+const RichDescription = ({ text }) => {
+  if (!text) return null;
+  
+  const urlPattern = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlPattern);
+  
+  let urlCounter = 0;
+  return parts.map((part, i) => {
+    if (/^https?:\/\//.test(part)) {
+      const shortName = getShortFileName(part, urlCounter);
+      urlCounter++;
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-image-link"
+          title={part}
+        >
+          📷 {shortName}
+        </a>
+      );
+    }
+    // Preserve newlines in non-URL parts
+    return part.split('\n').map((line, j, arr) => (
+      <React.Fragment key={`${i}-${j}`}>
+        {line}
+        {j < arr.length - 1 && <br />}
+      </React.Fragment>
+    ));
+  });
+};
 
 // Parse details text to extract unstructured description and fields
 const parseLogDetails = (detailsText) => {
@@ -129,7 +218,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [categories, setCategories] = useState(['ticket', 'evidence', 'ban', 'warning', 'note']);
+  const [categories, setCategories] = useState(['ticket', 'evidence', 'ban', 'warning', 'note', 'inter_register']);
+  const [ipCountries, setIpCountries] = useState({});
   
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -204,6 +294,45 @@ export default function App() {
     fetchLogs();
   }, [token, categoryFilter, searchQuery]);
 
+  const resolveIps = async (logsList) => {
+    const ipRegex = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/;
+    const uniqueIps = new Set();
+    
+    logsList.forEach(log => {
+      let match = log.details ? log.details.match(ipRegex) : null;
+      if (match) {
+        uniqueIps.add(match[0]);
+      }
+      if (log.identifier) {
+        match = log.identifier.match(ipRegex);
+        if (match) uniqueIps.add(match[0]);
+      }
+    });
+
+    for (const ip of uniqueIps) {
+      if (ipCountries[ip]) continue;
+      
+      try {
+        const res = await fetch(`https://ip-api.com/json/${ip}`);
+        const data = await res.json();
+        if (data && data.status === 'success') {
+          setIpCountries(prev => ({
+            ...prev,
+            [ip]: {
+              countryCode: data.countryCode,
+              country: data.country,
+              lat: data.lat,
+              lon: data.lon,
+              city: data.city
+            }
+          }));
+        }
+      } catch (err) {
+        console.error('GeoIP fetch failed for IP ' + ip, err);
+      }
+    }
+  };
+
   const fetchLogs = () => {
     setLoading(true);
     let url = `/api/logs?category=${categoryFilter}`;
@@ -217,7 +346,9 @@ export default function App() {
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
-          setLogs(data);
+          const filtered = data.filter(log => !shouldSkipLog(log.details));
+          setLogs(filtered);
+          resolveIps(filtered);
         }
       })
       .catch(err => console.error('Error fetching logs:', err))
@@ -253,7 +384,10 @@ export default function App() {
     })
       .then(res => res.json())
       .then(data => {
-        setLogs([data, ...logs]);
+        if (!shouldSkipLog(data.details)) {
+          setLogs([data, ...logs]);
+          resolveIps([data]);
+        }
         setShowAddModal(false);
         setNewLog({
           category: 'note',
@@ -265,6 +399,22 @@ export default function App() {
         });
       })
       .catch(err => console.error('Error adding log:', err));
+  };
+
+  const handleCategoryChange = (cat) => {
+    setNewLog(prev => {
+      let detailsVal = prev.details;
+      if (cat === 'inter_register') {
+        detailsVal = `ประเทศที่เล่น : \nรัฐที่อยู่ : \nID Discord : \nชื่อ-นามสกุล IC ผู้เล่น : \nการหา Server IP(IPv4): \n[ แนบรูปที่อยู่บนMap ]`;
+      } else if (prev.category === 'inter_register' && prev.details.startsWith('ประเทศที่เล่น :')) {
+        detailsVal = '';
+      }
+      return {
+        ...prev,
+        category: cat,
+        details: detailsVal
+      };
+    });
   };
 
   const handleDeleteLog = (id) => {
@@ -316,66 +466,163 @@ export default function App() {
   const copyToDiscord = (log) => {
     const { description, playerFields, otherFields } = getFormattedFields(log);
 
-    // Format Date & Time exactly like the card's local representations
-    const logDate = new Date(log.created_at);
-    const day = String(logDate.getDate()).padStart(2, '0');
-    const month = String(logDate.getMonth() + 1).padStart(2, '0');
-    const year = logDate.getFullYear();
-    const dateStr = `${day}/${month}/${year}`;
+    const ip = extractIpAddress(log, playerFields, otherFields);
+    const ipInfo = ip ? ipCountries[ip] : null;
+    const cat = log.category.toLowerCase();
 
-    const hours = String(logDate.getHours()).padStart(2, '0');
-    const minutes = String(logDate.getMinutes()).padStart(2, '0');
-    const seconds = String(logDate.getSeconds()).padStart(2, '0');
-    const timeStr = `${hours}:${minutes}:${seconds}`;
+    const evidenceLinks = [];
+    const seenUrls = new Set();
+    let imageCounter = 0;
+    let clipCounter = 0;
+    let fileCounter = 0;
 
-    let markdownContent = '';
+    const addUrl = (url) => {
+      if (!url) return;
+      const normalized = url.trim();
+      if (seenUrls.has(normalized)) return;
+      seenUrls.add(normalized);
 
-    // 1. Details Block (description and other non-player fields)
-    let detailsText = '';
+      let shortName = '';
+      try {
+        const urlObj = new URL(normalized);
+        const pathname = urlObj.pathname.toLowerCase();
+        
+        // Differentiate clip/video links
+        const isVideo = /\.(mp4|webm|mov|mkv|avi|wmv)$/i.test(pathname) || 
+                        /youtube\.com|youtu\.be|twitch\.tv|medal\.tv|tiktok\.com/i.test(urlObj.hostname) ||
+                        (urlObj.hostname.includes('drive.google.com') && urlObj.pathname.includes('/file/'));
+
+        if (isVideo) {
+          const extMatch = pathname.match(/\.(mp4|webm|mov|mkv|avi|wmv)$/i);
+          const ext = extMatch ? extMatch[0] : '.mp4';
+          shortName = `clip${String(clipCounter + 1).padStart(2, '0')}${ext}`;
+          clipCounter++;
+        } else {
+          // Differentiate images (Supabase, local uploads, or file extension)
+          const isImage = /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i.test(pathname) ||
+                          urlObj.hostname.includes('supabase') ||
+                          pathname.includes('/uploads/');
+          
+          if (isImage) {
+            const extMatch = pathname.match(/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i);
+            const ext = extMatch ? extMatch[0] : '.png';
+            shortName = `image${String(imageCounter + 1).padStart(2, '0')}${ext}`;
+            imageCounter++;
+          } else {
+            const extMatch = pathname.match(/\.[a-z0-9]+$/i);
+            const ext = extMatch ? extMatch[0] : '.bin';
+            shortName = `file${String(fileCounter + 1).padStart(2, '0')}${ext}`;
+            fileCounter++;
+          }
+        }
+      } catch {
+        shortName = `file${String(fileCounter + 1).padStart(2, '0')}`;
+        fileCounter++;
+      }
+
+      evidenceLinks.push({ shortName, url: normalized });
+    };
+
+    // 1. Extract URLs from description
     if (description) {
-      detailsText += `${description}\n`;
+      const urlPattern = /(https?:\/\/[^\s]+)/g;
+      const descMatches = description.match(urlPattern);
+      if (descMatches) {
+        descMatches.forEach(match => {
+          addUrl(match);
+        });
+      }
     }
+
+    // 2. Extract URLs from other fields
     const filteredOtherFields = otherFields.filter(f => !f.isReporter);
     filteredOtherFields.forEach(f => {
-      detailsText += `${f.key.toUpperCase()}: ${f.value}\n`;
+      const hasUrl = /https?:\/\//.test(f.value);
+      if (hasUrl) {
+        addUrl(f.value);
+      }
     });
 
-    if (detailsText.trim()) {
-      markdownContent += `\n**[${log.category.toUpperCase()} DETAILS]**\n\`\`\`\n${detailsText.trim()}\n\`\`\`\n`;
+    // 3. Extract attachments
+    if (log.attachments && log.attachments.length > 0) {
+      log.attachments.forEach((att) => {
+        const url = att.startsWith('http') ? att : `${window.location.origin}/uploads/${att}`;
+        addUrl(url);
+      });
     }
 
-    // 2. Player Information Block
+    // 4. Extract reference links
+    if (log.links && log.links.length > 0) {
+      log.links.forEach((link) => {
+        addUrl(link);
+      });
+    }
+
+    let evidenceLines = '';
+    if (evidenceLinks.length > 0) {
+      evidenceLines += `\n📷 **หลักฐาน:**\n`;
+      evidenceLinks.forEach(item => {
+        evidenceLines += `[${item.shortName}](${item.url})\n`;
+      });
+    }
+
+    // Custom formatting for inter_register (International Registration)
+    if (cat === 'inter_register') {
+      const typeLabel = `✈️ **ประกาศลงทะเบียนผู้เล่นต่างประเทศ** ✈️`;
+      const detailsBlock = `\`\`\`\n${log.details.trim()}\n\`\`\`\n`;
+      
+      let mapLine = '';
+      if (ipInfo && ipInfo.lat && ipInfo.lon) {
+        const mapUrl = `https://static-maps.yandex.ru/1.x/?ll=${ipInfo.lon},${ipInfo.lat}&z=7&l=map&size=500,300&pt=${ipInfo.lon},${ipInfo.lat},pm2gnl`;
+        mapLine = `\n📍 **แผนที่พิกัดประเทศผู้เล่น (Verified IP Location):**\n${mapUrl}\n`;
+      }
+      
+      const finalMsgText = `${typeLabel}\n${detailsBlock}${evidenceLines}${mapLine}`;
+
+      navigator.clipboard.writeText(finalMsgText)
+        .then(() => {
+          setCopiedId(log.id);
+          setTimeout(() => setCopiedId(null), 2000);
+        })
+        .catch(err => console.error('Failed to copy text: ', err));
+      return;
+    }
+
+    let playerContent = '';
     const filteredPlayerFields = playerFields.filter(f => !f.isReporter);
     if (filteredPlayerFields.length > 0) {
       let playerText = '';
       filteredPlayerFields.forEach(f => {
         playerText += `${f.key}: ${f.value}\n`;
       });
-      markdownContent += `\n**[PLAYER INFORMATION]**\n\`\`\`\n${playerText.trim()}\n\`\`\`\n`;
+      playerContent = `\n**[PLAYER INFORMATION]**\n\`\`\`\n${playerText.trim()}\n\`\`\`\n`;
     }
 
-    // 3. Record Info Block (Date, Time, Admin)
-    let metaText = '';
-    metaText += `DATE (LOCAL): ${dateStr}\n`;
-    metaText += `TIME (LOCAL): ${timeStr}\n`;
-    metaText += `RECORDED BY: ${log.created_by}\n`;
+    let reasonContent = '';
+    const reasonField = otherFields.find(f => {
+      const lowerKey = f.key.toLowerCase();
+      return lowerKey === 'reason' || lowerKey.includes('เหตุผล');
+    });
+    if (reasonField) {
+      reasonContent = `\n**[REASON / เหตุผล]**\n\`\`\`\n${reasonField.value.trim()}\n\`\`\`\n`;
+    }
 
-    markdownContent += `\n**[RECORD INFO]**\n\`\`\`\n${metaText.trim()}\n\`\`\`\n`;
+    let typeLabel = '';
+    
+    if (cat === 'ban' || cat.includes('แดง') || cat.includes('red')) {
+      typeLabel = `🟥 **ประกาศใบแดง** 🟥`;
+    } else if (cat.includes('ส้ม') || cat.includes('orange')) {
+      typeLabel = `🟧 **ประกาศใบส้ม** 🟧`;
+    } else if (cat === 'warning' || cat.includes('เหลือง') || cat.includes('yellow')) {
+      typeLabel = `🟨 **ประกาศใบเหลือง** 🟨`;
+    } else {
+      const labelEmoji = log.category === 'evidence' ? '📷' : '📝';
+      const fallbackLabel = log.category === 'evidence' ? 'EVIDENCE LOG / หลักฐานเคส' : 'LOG / บันทึก';
+      typeLabel = `${labelEmoji} **[${fallbackLabel}]**`;
+    }
 
-    // Attachments & reference links outside of code blocks for clickability
-    const attachmentLines = log.attachments && log.attachments.length > 0 
-      ? `\n📷 **หลักฐาน:** \n${log.attachments.map(att => att.startsWith('http') ? att : `${window.location.origin}/uploads/${att}`).join('\n')}\n`
-      : '';
-      
-    const linkLines = log.links && log.links.length > 0
-      ? `\n🔗 **ลิงก์อ้างอิง:** \n${log.links.join('\n')}\n`
-      : '';
-
-    const labelEmoji = log.category === 'ban' ? '🚨' : log.category === 'warning' ? '⚠️' : log.category === 'evidence' ? '📷' : '📝';
-    const typeLabel = log.category === 'ban' ? 'BAN LOG / บันทึกการแบน' : log.category === 'warning' ? 'WARNING LOG / บันทึกเตือน' : log.category === 'evidence' ? 'EVIDENCE LOG / หลักฐานเคส' : 'LOG / บันทึก';
-
-    const finalMsgText = `${labelEmoji} **[${typeLabel}]**
-${markdownContent}${attachmentLines}${linkLines}`;
+    const finalMsgText = `${typeLabel}
+${playerContent}${reasonContent}${evidenceLines}`;
 
     navigator.clipboard.writeText(finalMsgText)
       .then(() => {
@@ -436,6 +683,14 @@ ${markdownContent}${attachmentLines}${linkLines}`;
           glow: 'rgba(234, 179, 8, 0.3)',
           icon: <Database className="w-4 h-4 text-yellow-500" />
         };
+      case 'inter_register':
+        return {
+          bg: 'rgba(16, 185, 129, 0.15)',
+          border: 'rgba(16, 185, 129, 0.4)',
+          text: '#10b981',
+          glow: 'rgba(16, 185, 129, 0.3)',
+          icon: <Globe className="w-4 h-4 text-emerald-500" />
+        };
       default:
         return {
           bg: 'rgba(16, 185, 129, 0.15)',
@@ -458,6 +713,7 @@ ${markdownContent}${attachmentLines}${linkLines}`;
       case 'note': return '📝 บันทึกทั่วไป';
       case 'bug_report': return '🐛 บั๊กระบบ';
       case 'donation': return '💎 เติมเงิน / โดเนท';
+      case 'inter_register': return '✈️ ลงทะเบียนต่างประเทศ';
       default:
         // Capitalize custom category names nicely
         const cleanName = cat.replace(/_/g, ' ');
@@ -630,6 +886,9 @@ ${markdownContent}${attachmentLines}${linkLines}`;
             logs.map(log => {
               const styles = getCategoryStyles(log.category);
               const { description, playerFields, otherFields } = getFormattedFields(log);
+              const ip = extractIpAddress(log, playerFields, otherFields);
+              const ipInfo = ip ? ipCountries[ip] : null;
+              const isForeignIP = ipInfo && ipInfo.countryCode && ipInfo.countryCode !== 'TH';
 
               // Format date & time
               const logDate = new Date(log.created_at);
@@ -663,6 +922,12 @@ ${markdownContent}${attachmentLines}${linkLines}`;
 
                   {/* DISCORD EMBED */}
                   <div className="discord-embed" style={{ borderLeftColor: styles.text }}>
+                    {log.category === 'inter_register' && isForeignIP && (
+                      <div className="foreign-ip-verified-badge" title={`IP: ${ip} (Country: ${ipInfo.country})`}>
+                        <Globe className="w-3.5 h-3.5 mr-1 text-emerald-400 animate-pulse" />
+                        <span>ต่างประเทศจริง ({ipInfo.country})</span>
+                      </div>
+                    )}
                     
                     <div className="embed-content-wrapper">
                       <div className="embed-left-side">
@@ -677,7 +942,24 @@ ${markdownContent}${attachmentLines}${linkLines}`;
                         {/* EMBED DESCRIPTION */}
                         {description && (
                           <div className="embed-description">
-                            {description}
+                            <RichDescription text={description} />
+                          </div>
+                        )}
+
+                        {/* EMBED MAP FOR INTER REGISTER */}
+                        {log.category === 'inter_register' && ipInfo && ipInfo.lat && ipInfo.lon && (
+                          <div className="embed-map-container">
+                            <div className="embed-map-header">
+                              <Globe className="w-3.5 h-3.5 mr-1 text-neon-cyan" />
+                              <span>Verified IP Geo-Location: {ipInfo.city ? `${ipInfo.city}, ` : ''}{ipInfo.country}</span>
+                            </div>
+                            <div className="embed-map-wrapper">
+                              <img 
+                                src={`https://static-maps.yandex.ru/1.x/?ll=${ipInfo.lon},${ipInfo.lat}&z=7&l=map&size=500,280&pt=${ipInfo.lon},${ipInfo.lat},pm2gnl`} 
+                                alt="Player Location Map" 
+                                className="embed-map-img" 
+                              />
+                            </div>
                           </div>
                         )}
                       </div>
@@ -688,6 +970,7 @@ ${markdownContent}${attachmentLines}${linkLines}`;
                       {/* Other Fields */}
                       {otherFields.map((field, idx) => {
                         const isCopied = copiedValue === field.value;
+                        const hasUrl = /https?:\/\//.test(field.value);
                         return (
                           <div key={idx} className="embed-field-box">
                             <div className="field-label">{field.key.toUpperCase()}</div>
@@ -696,7 +979,7 @@ ${markdownContent}${attachmentLines}${linkLines}`;
                               onClick={(e) => handleCopyValue(field.value, e)}
                               title="คลิกเพื่อคัดลอกเฉพาะข้อมูลส่วนนี้"
                             >
-                              {field.value}
+                              {hasUrl ? <RichDescription text={field.value} /> : field.value}
                               {isCopied && <span className="copy-indicator">คัดลอกแล้ว!</span>}
                             </div>
                           </div>
@@ -871,12 +1154,11 @@ ${markdownContent}${attachmentLines}${linkLines}`;
                 <label>หมวดหมู่</label>
                 <select 
                   value={newLog.category}
-                  onChange={(e) => setNewLog({ ...newLog, category: e.target.value })}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
                 >
-                  <option value="note">Note (บันทึกทั่วไป)</option>
-                  <option value="ban">Ban (แบนผู้เล่น)</option>
-                  <option value="warning">Warning (เตือนผู้เล่น)</option>
-                  <option value="evidence">Evidence (เก็บรูปหลักฐาน)</option>
+                  {categories.map(cat => (
+                    <option key={cat} value={cat}>{getCategoryLabel(cat)}</option>
+                  ))}
                 </select>
               </div>
 

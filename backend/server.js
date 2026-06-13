@@ -54,6 +54,21 @@ function parseJsonField(val) {
   return val;
 }
 
+// Helper: Check if details content contains close ticket keywords to skip storing it
+function shouldSkipLog(text) {
+  if (!text) return false;
+  const lowercaseText = text.toLowerCase();
+  const skipKeywords = [
+    'ปิดทิกเกทสำเร็จ',
+    'ปิดทิกเก็ตสำเร็จ',
+    'ปิดเคสสำเร็จ',
+    'ปิดเคสเรียบร้อย',
+    'ปิดตั๋วเคส',
+    'ticket closed'
+  ];
+  return skipKeywords.some(keyword => lowercaseText.includes(keyword));
+}
+
 // MIDDLEWARES
 
 // 1. Authenticate JWT Token for Web Frontend
@@ -205,6 +220,20 @@ app.post('/api/logs', authenticateToken, async (req, res) => {
     return res.status(400).json({ error: 'Category and details are required' });
   }
 
+  if (shouldSkipLog(details)) {
+    return res.status(201).json({
+      id: 'skipped_' + Date.now(),
+      category: category.toLowerCase(),
+      player_name: player_name || null,
+      identifier: identifier || null,
+      details,
+      attachments: attachments || [],
+      links: links || [],
+      created_by,
+      created_at
+    });
+  }
+
   try {
     const { data: newLog, error } = await supabase
       .from('logs')
@@ -351,6 +380,10 @@ app.post('/api/bot/tickets/:channelId/messages', authenticateBot, async (req, re
   const { authorName, authorId, content, attachments, links, category } = req.body;
   const created_at = new Date().toISOString();
 
+  if (shouldSkipLog(content)) {
+    return res.status(201).json({ message: 'Message logged successfully (skipped storage due to close keyword)' });
+  }
+
   try {
     // Verify ticket exists
     const { data: ticket, error: ticketError } = await supabase
@@ -363,10 +396,8 @@ app.post('/api/bot/tickets/:channelId/messages', authenticateBot, async (req, re
       return res.status(404).json({ error: 'Ticket channel not found' });
     }
 
-    let logCategory = category;
-    if (!logCategory) {
-      logCategory = ticket.category || 'ticket';
-    }
+    // Use the ticket's current selected category if available, otherwise fall back to category sent by bot
+    let logCategory = ticket.category || category || 'ticket';
 
     const { error: insertError } = await supabase
       .from('logs')
@@ -418,6 +449,16 @@ app.put('/api/bot/tickets/:channelId/category', authenticateBot, async (req, res
 
     if (updateError) throw updateError;
 
+    // Also update all existing logs of this ticket to the new category
+    const { error: logsUpdateError } = await supabase
+      .from('logs')
+      .update({ category: category.toLowerCase() })
+      .eq('ticket_id', channelId);
+
+    if (logsUpdateError) {
+      console.error('Failed to update existing logs categories:', logsUpdateError);
+    }
+
     res.json({ message: 'Ticket category updated successfully', category });
   } catch (err) {
     console.error('Error updating ticket category:', err);
@@ -460,25 +501,6 @@ app.put('/api/bot/tickets/:channelId/close', authenticateBot, async (req, res) =
 
     if (logsError) throw logsError;
     
-    // Create an overall summary log of the ticket closure
-    const summaryDetails = `🎫 Ticket Closed by ${closedBy}. Total messages/evidences logged: ${(ticketLogs || []).length}.`;
-    
-    const { error: insertError } = await supabase
-      .from('logs')
-      .insert({
-        ticket_id: channelId,
-        category: ticket.category.toLowerCase(),
-        player_name: ticket.username,
-        identifier: `discord:${ticket.user_id}`,
-        details: summaryDetails,
-        attachments: [],
-        links: [],
-        created_by: closedBy,
-        created_at: closed_at
-      });
-
-    if (insertError) throw insertError;
-
     res.json({ 
       message: 'Ticket closed successfully',
       ticketId: channelId,
