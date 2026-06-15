@@ -53,6 +53,7 @@ const LOG_CHANNELS_CONFIG = [
   { key: 'orange', name: '🟧-log-orange' },
   { key: 'ban', name: '🟥-log-ban' },
   { key: 'inter_register', name: '✈️-log-inter' },
+  { key: 'voice_changer', name: '🎤-log-voice' },
   { key: 'evidence', name: '📷-log-evidence' },
   { key: 'tickets', name: '🎫-log-tickets' },
   { key: 'errors', name: '🤖-bot-errors' }
@@ -82,6 +83,7 @@ function getCategoryFromChannelName(channelName) {
     if (prefix === '🟧') return 'orange';
     if (prefix === '💸') return 'fine';
     if (prefix === '✈️') return 'inter_register';
+    if (prefix === '🎤' || prefix === '🎙️') return 'voice_changer';
     if (prefix === '📷') return 'evidence';
     if (prefix === '📂') {
       return 'tickets'; // Custom categories logged as general tickets logs
@@ -198,6 +200,10 @@ function getTicketSetupPayload() {
     new ButtonBuilder()
       .setCustomId('open_ticket_inter_register')
       .setLabel('✈️ ต่างประเทศ')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('open_ticket_voice_changer')
+      .setLabel('🎤 เครื่องแปลงเสียง')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('open_ticket_evidence')
@@ -414,6 +420,7 @@ function getNewTicketChannelName(currentName, category) {
     orange: { emoji: '🟧', abbr: 'orange' },
     fine: { emoji: '💸', abbr: 'fine' },
     inter_register: { emoji: '✈️', abbr: 'inter' },
+    voice_changer: { emoji: '🎤', abbr: 'voice' },
     evidence: { emoji: '📷', abbr: 'evidence' }
   };
 
@@ -529,6 +536,7 @@ client.on('interactionCreate', async (interaction) => {
             orange: '🟧 ใบส้ม',
             fine: '💸 ประกาศปรับ',
             inter_register: '✈️ ลงทะเบียนต่างประเทศ',
+            voice_changer: '🎤 ขอใช้เครื่องแปลงเสียง',
             evidence: '📷 เก็บหลักฐาน'
           };
           const selectedLabel = labels[category] || category;
@@ -622,6 +630,7 @@ client.on('interactionCreate', async (interaction) => {
           orange: '🟧 ใบส้ม',
           ban: '🟥 ใบแดง',
           inter_register: '✈️ ลงทะเบียนต่างประเทศ',
+          voice_changer: '🎤 ขอใช้เครื่องแปลงเสียง',
           evidence: '📷 เก็บหลักฐาน'
         };
         const displayLabel = labels[category] || category;
@@ -693,19 +702,19 @@ client.on('messageCreate', async (message) => {
       const localAttachments = [];
       const extractedLinks = [];
 
-      // 1. Process attachments (Images)
+      // 1. Process attachments (Images, Audios, Videos)
       if (message.attachments.size > 0) {
         for (const [id, attachment] of message.attachments) {
           const contentType = attachment.contentType || '';
-          // Only process images (jpeg, png, gif, webp)
-          if (contentType.startsWith('image/')) {
+          // Process images, audio files, and video files
+          if (contentType.startsWith('image/') || contentType.startsWith('audio/') || contentType.startsWith('video/')) {
             try {
-              // Download image attachment from Discord
-              const imageResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+              // Download attachment from Discord
+              const fileResponse = await axios.get(attachment.url, { responseType: 'arraybuffer' });
               
               // Prepare FormData to upload to Backend
               const form = new FormData();
-              form.append('file', Buffer.from(imageResponse.data), {
+              form.append('file', Buffer.from(fileResponse.data), {
                 filename: attachment.name,
                 contentType: attachment.contentType
               });
@@ -793,12 +802,15 @@ client.on('messageCreate', async (message) => {
           if (isFakeRegistration) {
             await message.react('❌').catch(err => {});
           }
+        } else if (resolvedCategory === 'voice_changer' || resolvedCategory.includes('voice') || resolvedCategory.includes('เสียง')) {
+          await message.react('🎤').catch(err => {});
+          await message.react('🎙️').catch(err => {});
         } else if (resolvedCategory === 'fine' || resolvedCategory.includes('fine') || resolvedCategory.includes('ปรับ')) {
           await message.react('💸').catch(err => {});
         }
 
-        // Send Log to Discord Log Channel if it is evidence (images or links) OR if it is an international registration
-        if (category === 'evidence' || resolvedCategory === 'inter_register') {
+        // Send Log to Discord Log Channel if it is evidence (images or links) OR if it is an international registration OR voice changer registration
+        if (category === 'evidence' || resolvedCategory === 'inter_register' || resolvedCategory === 'voice_changer') {
           const logCategory = getCategoryFromChannelName(channel.name);
           const embedTitle = isFakeRegistration 
             ? '🚨 [FAKE IP / ข้อมูลปลอม] Evidence Submitted' 
@@ -820,8 +832,14 @@ client.on('messageCreate', async (message) => {
               return `[${getShortFileName(url, idx)}](${url})`;
             });
             const firstRawLink = localAttachments[0].startsWith('http') ? localAttachments[0] : `${API_URL.replace('/api', '')}/uploads/${localAttachments[0]}`;
-            evidenceEmbed.addFields({ name: 'รูปภาพหลักฐาน', value: fileLinks.join('\n') });
-            evidenceEmbed.setThumbnail(firstRawLink);
+            const isImage = /\.(jpeg|jpg|gif|png|webp)$/i.test(firstRawLink);
+            const isAnyVoice = localAttachments.some(f => /\.(mp3|wav|ogg|m4a)$/i.test(f.toLowerCase()));
+            const fieldName = isAnyVoice ? 'ไฟล์เสียง / หลักฐานที่แนบ' : 'รูปภาพหลักฐาน';
+
+            evidenceEmbed.addFields({ name: fieldName, value: fileLinks.join('\n') });
+            if (isImage) {
+              evidenceEmbed.setThumbnail(firstRawLink);
+            }
           }
           if (extractedLinks.length > 0) {
             const linkList = extractedLinks.map((link, idx) => `[ลิงก์อ้างอิง ${String(idx + 1).padStart(2, '0')}](${link})`);

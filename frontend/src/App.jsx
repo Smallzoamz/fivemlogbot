@@ -15,6 +15,7 @@ import {
   ExternalLink,
   Check,
   X,
+  Mic,
   User as UserIcon,
   Shield,
   Globe,
@@ -228,6 +229,22 @@ const getFormattedFields = (log) => {
   };
 };
 
+// Helper: Check file type of attachments
+const isImageFile = (filename) => {
+  if (!filename) return false;
+  return /\.(jpeg|jpg|gif|png|webp)$/i.test(filename);
+};
+
+const isAudioFile = (filename) => {
+  if (!filename) return false;
+  return /\.(mp3|wav|ogg|m4a|flac)$/i.test(filename);
+};
+
+const isVideoFile = (filename) => {
+  if (!filename) return false;
+  return /\.(mp4|webm|mov|ogg)$/i.test(filename);
+};
+
 // Helper: Detect and parse video links (Google Drive, YouTube, direct video files)
 const getVideoInfo = (url) => {
   if (!url) return null;
@@ -327,7 +344,7 @@ export default function App() {
     }, 300);
     return () => clearTimeout(handler);
   }, [searchQuery]);
-  const [categories, setCategories] = useState(['fine', 'warning', 'orange', 'ban', 'inter_register', 'evidence']);
+  const [categories, setCategories] = useState(['fine', 'warning', 'orange', 'ban', 'inter_register', 'voice_changer', 'evidence']);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [discordTags, setDiscordTags] = useState(() => {
     const saved = localStorage.getItem('discordTags');
@@ -704,7 +721,12 @@ export default function App() {
       let detailsVal = prev.details;
       if (cat === 'inter_register') {
         detailsVal = `ประเทศที่เล่น : \nรัฐที่อยู่ : \nID Discord : \nชื่อ-นามสกุล IC ผู้เล่น : \nการหา Server IP(IPv4): \n[ แนบรูปที่อยู่บนMap ]`;
-      } else if (prev.category === 'inter_register' && prev.details.startsWith('ประเทศที่เล่น :')) {
+      } else if (cat === 'voice_changer') {
+        detailsVal = `ID Discord : \nชื่อ-นามสกุล IC ผู้เล่น :\nชื่อโปรแกรม :\n[แนบไฟล์ หรือ คลิปเสียงที่ผ่านการแปลงด้วยโปรแกรมที่ใช้งาน]`;
+      } else if (
+        (prev.category === 'inter_register' && prev.details.startsWith('ประเทศที่เล่น :')) ||
+        (prev.category === 'voice_changer' && prev.details.startsWith('ID Discord :'))
+      ) {
         detailsVal = '';
       }
       return {
@@ -894,6 +916,22 @@ export default function App() {
       return;
     }
 
+    // Custom formatting for voice_changer (Voice Changer Registration)
+    if (cat === 'voice_changer') {
+      const typeLabel = `🎤 **ประกาศขอใช้โปรแกรมแปลงเสียง** 🎤`;
+      const detailsBlock = `\`\`\`\n${log.details.trim()}\n\`\`\`\n`;
+      
+      const finalMsgText = `${typeLabel}\n${detailsBlock}${evidenceLines}`;
+
+      navigator.clipboard.writeText(finalMsgText)
+        .then(() => {
+          setCopiedId(log.id);
+          setTimeout(() => setCopiedId(null), 2000);
+        })
+        .catch(err => console.error('Failed to copy text: ', err));
+      return;
+    }
+
     let playerContent = '';
     const filteredPlayerFields = playerFields.filter(f => !f.isReporter);
     if (filteredPlayerFields.length > 0) {
@@ -928,7 +966,11 @@ export default function App() {
       typeLabel = `🟨 **ประกาศใบเหลือง** 🟨`;
     } else if (cat === 'fine' || cat.includes('ปรับ') || cat.includes('fine')) {
       typeLabel = `💸 **ประกาศปรับ** 💸`;
-      let amount = (description || log.details || '').trim();
+      let amount = (description || log.details || '')
+        .split('\n')
+        .filter(line => !line.toLowerCase().includes('http://') && !line.toLowerCase().includes('https://'))
+        .join('\n')
+        .trim();
       amount = amount.replace(/^[🪙💸💰\s]*ปรับ\s*[:：]?\s*/gi, '').replace(/[🪙💸💰\s]*$/gi, '').trim();
       fineLine = `\n💸 ปรับ : ${amount} 💸\n`;
     } else {
@@ -1051,6 +1093,14 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
           glow: 'rgba(16, 185, 129, 0.3)',
           icon: <Globe className="w-4 h-4 text-emerald-500" />
         };
+      case 'voice_changer':
+        return {
+          bg: 'rgba(236, 72, 153, 0.15)',
+          border: 'rgba(236, 72, 153, 0.4)',
+          text: '#ec4899',
+          glow: 'rgba(236, 72, 153, 0.3)',
+          icon: <Mic className="w-4 h-4 text-pink-500" />
+        };
       default:
         return {
           bg: 'rgba(16, 185, 129, 0.15)',
@@ -1071,6 +1121,7 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
       case 'orange': return '🟧 ใบส้ม';
       case 'ban': return '🟥 ใบแดง';
       case 'inter_register': return '✈️ ลงทะเบียนต่างประเทศ';
+      case 'voice_changer': return '🎤 ขอใช้เครื่องแปลงเสียง';
       case 'evidence': return '📷 เก็บหลักฐาน';
       default:
         // Capitalize custom category names nicely
@@ -1144,6 +1195,7 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
       orange: logs.filter(l => l.category.toLowerCase() === 'orange').length,
       ban: logs.filter(l => l.category.toLowerCase() === 'ban').length,
       inter_register: logs.filter(l => l.category.toLowerCase() === 'inter_register').length,
+      voice_changer: logs.filter(l => l.category.toLowerCase() === 'voice_changer').length,
       evidence: logs.filter(l => l.category.toLowerCase() === 'evidence').length
     };
   };
@@ -1205,6 +1257,10 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
           <div className="stat-card inter-register">
             <h3>✈️ ต่างประเทศ</h3>
             <span className="stat-value">{stats.inter_register}</span>
+          </div>
+          <div className="stat-card voice-changer">
+            <h3>🎤 แปลงเสียง</h3>
+            <span className="stat-value">{stats.voice_changer}</span>
           </div>
           <div className="stat-card evidence">
             <h3>📷 เก็บหลักฐาน</h3>
@@ -1370,7 +1426,7 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
                             <div className="embed-description">
                               {log.category.toLowerCase() === 'fine' ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold', color: '#eab308' }}>
-                                  <span>💸 ปรับ : {description.replace(/^[🪙💸💰\s]*ปรับ\s*[:：]?\s*/gi, '').replace(/[🪙💸💰\s]*$/gi, '').trim()} 💸</span>
+                                  <span>💸 ปรับ : {description.split('\n').filter(line => !line.toLowerCase().includes('http://') && !line.toLowerCase().includes('https://')).join('\n').replace(/^[🪙💸💰\s]*ปรับ\s*[:：]?\s*/gi, '').replace(/[🪙💸💰\s]*$/gi, '').trim()} 💸</span>
                                 </div>
                               ) : (
                                 <RichDescription text={description} />
@@ -1489,32 +1545,89 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
                         </div>
                       </div>
 
-                      {/* IMAGES GRID */}
-                      {log.attachments && log.attachments.length > 0 && (
-                        <div className="embed-attachments">
-                          <div className="embed-attachments-title">ไฟล์ภาพหลักฐาน:</div>
-                          <div className="embed-images-grid">
-                            {log.attachments.map((file, idx) => {
-                              const imageUrl = file.startsWith('http') ? file : `/uploads/${file}`;
-                              return (
-                                <div 
-                                  key={idx} 
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    setPreviewImage(imageUrl);
-                                  }}
-                                  className="embed-image-card"
-                                >
-                                  <img src={imageUrl} alt="evidence-thumb" className="embed-small-image" />
-                                  <div className="embed-image-card-overlay">
-                                    <ExternalLink className="w-4 h-4 text-white" />
-                                  </div>
+                      {/* ATTACHMENTS (Images, Audio, Video) */}
+                      {(() => {
+                        if (!log.attachments || log.attachments.length === 0) return null;
+                        
+                        const images = log.attachments.filter(file => isImageFile(file));
+                        const audios = log.attachments.filter(file => isAudioFile(file));
+                        const videos = log.attachments.filter(file => isVideoFile(file));
+                        
+                        return (
+                          <div className="embed-attachments">
+                            {images.length > 0 && (
+                              <div className="embed-attachments-section">
+                                <div className="embed-attachments-title">ไฟล์ภาพหลักฐาน:</div>
+                                <div className="embed-images-grid">
+                                  {images.map((file, idx) => {
+                                    const imageUrl = file.startsWith('http') ? file : `/uploads/${file}`;
+                                    return (
+                                      <div 
+                                        key={idx} 
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          setPreviewImage(imageUrl);
+                                        }}
+                                        className="embed-image-card"
+                                      >
+                                        <img src={imageUrl} alt="evidence-thumb" className="embed-small-image" />
+                                        <div className="embed-image-card-overlay">
+                                          <ExternalLink className="w-4 h-4 text-white" />
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              );
-                            })}
+                              </div>
+                            )}
+
+                            {audios.length > 0 && (
+                              <div className="embed-attachments-section" style={{ marginTop: '12px' }}>
+                                <div className="embed-attachments-title">ไฟล์เสียง / เสียงโปรแกรมแปลงเสียง:</div>
+                                <div className="embed-audios-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                                  {audios.map((file, idx) => {
+                                    const audioUrl = file.startsWith('http') ? file : `/uploads/${file}`;
+                                    return (
+                                      <div key={idx} className="embed-audio-container">
+                                        <div className="embed-audio-header">
+                                          <Mic className="w-3.5 h-3.5 text-pink-500 mr-1.5" />
+                                          <span className="embed-audio-filename" title={file}>
+                                            {file.substring(file.lastIndexOf('/') + 1)}
+                                          </span>
+                                        </div>
+                                        <audio controls src={audioUrl} className="embed-audio-player" />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {videos.length > 0 && (
+                              <div className="embed-attachments-section" style={{ marginTop: '12px' }}>
+                                <div className="embed-attachments-title">ไฟล์วิดีโอหลักฐาน:</div>
+                                <div className="embed-videos-list" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+                                  {videos.map((file, idx) => {
+                                    const videoUrl = file.startsWith('http') ? file : `/uploads/${file}`;
+                                    return (
+                                      <button 
+                                        key={idx} 
+                                        onClick={() => setPreviewVideo({ type: 'direct', embedUrl: videoUrl })}
+                                        className="embed-btn-link video-link"
+                                        style={{ background: 'rgba(168, 85, 247, 0.15)', borderColor: 'rgba(168, 85, 247, 0.4)', color: '#c084fc' }}
+                                        type="button"
+                                      >
+                                        <Play className="w-3 h-3 mr-1" />
+                                        เล่นวิดีโอ: {file.substring(file.lastIndexOf('/') + 1).substring(0, 25)}...
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {/* LINKS */}
                       {log.links && log.links.length > 0 && (
