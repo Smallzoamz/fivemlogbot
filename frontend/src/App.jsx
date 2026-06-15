@@ -245,6 +245,29 @@ const isVideoFile = (filename) => {
   return /\.(mp4|webm|mov|ogg)$/i.test(filename);
 };
 
+// Helper: Extract Discord ID from details
+const getDiscordIdFromDetails = (details) => {
+  if (!details) return '';
+  const lines = details.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const colonIndex = trimmed.indexOf(':');
+    if (colonIndex !== -1) {
+      const key = trimmed.substring(0, colonIndex).trim().toLowerCase();
+      if (key === 'id discord' || key === 'discord id' || key === 'discord') {
+        const val = trimmed.substring(colonIndex + 1).trim();
+        // Remove <@ and > if they are already present in the mention
+        const cleanVal = val.replace(/[<@!>]/g, '');
+        // Match first sequence of digits
+        const match = cleanVal.match(/\d+/);
+        if (match) return match[0];
+        return cleanVal; // fallback if they wrote something else
+      }
+    }
+  }
+  return '';
+};
+
 // Helper: Detect and parse video links (Google Drive, YouTube, direct video files)
 const getVideoInfo = (url) => {
   if (!url) return null;
@@ -900,14 +923,10 @@ export default function App() {
     // Custom formatting for inter_register (International Registration)
     if (cat === 'inter_register') {
       if (isAnnouncement) {
-        let discordId = '';
-        if (log.identifier) {
+        let discordId = getDiscordIdFromDetails(log.details);
+        if (!discordId && log.identifier) {
           const match = log.identifier.match(/\d+/);
           if (match) discordId = match[0];
-        }
-        if (!discordId && log.details) {
-          const match = log.details.match(/id\s*discord\s*[:：]\s*(\d+)/i);
-          if (match) discordId = match[1];
         }
         if (!discordId && log.identifier) {
           discordId = log.identifier.replace('discord:', '').trim();
@@ -951,14 +970,10 @@ export default function App() {
     // Custom formatting for voice_changer (Voice Changer Registration)
     if (cat === 'voice_changer') {
       if (isAnnouncement) {
-        let discordId = '';
-        if (log.identifier) {
+        let discordId = getDiscordIdFromDetails(log.details);
+        if (!discordId && log.identifier) {
           const match = log.identifier.match(/\d+/);
           if (match) discordId = match[0];
-        }
-        if (!discordId && log.details) {
-          const match = log.details.match(/id\s*discord\s*[:：]\s*(\d+)/i);
-          if (match) discordId = match[1];
         }
         if (!discordId && log.identifier) {
           discordId = log.identifier.replace('discord:', '').trim();
