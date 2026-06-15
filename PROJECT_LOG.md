@@ -89,4 +89,6 @@
 [2026-06-15 14:55] | File: bot/bot.js | Line: 56 | Keyword: Voice-Changer-Bot | Status: Success | Change: Added 🎤-log-voice setup, configured category emoji/abbreviations prefix check, added 🎤 เครื่องแปลงเสียง button support ticket builder, and handled automatic emoji reactions.
 [2026-06-15 15:00] | File: bot/bot.js | Line: 708 | Keyword: Audio-Video-Bot-Support | Status: Success | Change: Expanded Discord bot attachment mime-type processing from image/ to include audio/ and video/, enabling voice changer audio clips and evidence video files to upload to Supabase bucket.
 [2026-06-15 15:00] | File: frontend/src/App.jsx | Line: 1546 | Keyword: Audio-Video-UI-Renderer | Status: Success | Change: Separated log attachments into images, audios, and videos using file-extension helper checks, and rendered playable custom styled HTML5 audio elements and direct video play triggers for a polished dashboard experience.
+[2026-06-15 15:05] | File: frontend/src/App.jsx | Line: 900 | Keyword: Announcement-Copy-Categories | Status: Success | Change: Added custom formatted Announcement Copy buttons for inter_register and voice_changer categories, and integrated role tag inputs inside Settings Modal.
+
 

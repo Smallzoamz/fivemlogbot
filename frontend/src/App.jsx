@@ -313,7 +313,8 @@ const isAnnouncementCategory = (category) => {
     cat === 'ban' || cat.includes('แดง') || cat.includes('red') ||
     cat === 'warning' || cat.includes('เหลือง') || cat.includes('yellow') ||
     cat.includes('ส้ม') || cat.includes('orange') ||
-    cat === 'fine' || cat.includes('ปรับ') || cat.includes('fine')
+    cat === 'fine' || cat.includes('ปรับ') || cat.includes('fine') ||
+    cat === 'inter_register' || cat === 'voice_changer'
   );
 };
 
@@ -348,12 +349,15 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [discordTags, setDiscordTags] = useState(() => {
     const saved = localStorage.getItem('discordTags');
-    return saved ? JSON.parse(saved) : {
+    const defaults = {
       ban: '',
       warning: '',
       orange: '',
-      fine: ''
+      fine: '',
+      inter_register: '',
+      voice_changer: ''
     };
+    return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
   const [ipCountries, setIpCountries] = useState({});
 
@@ -895,6 +899,34 @@ export default function App() {
 
     // Custom formatting for inter_register (International Registration)
     if (cat === 'inter_register') {
+      if (isAnnouncement) {
+        let discordId = '';
+        if (log.identifier) {
+          const match = log.identifier.match(/\d+/);
+          if (match) discordId = match[0];
+        }
+        if (!discordId && log.details) {
+          const match = log.details.match(/id\s*discord\s*[:：]\s*(\d+)/i);
+          if (match) discordId = match[1];
+        }
+        if (!discordId && log.identifier) {
+          discordId = log.identifier.replace('discord:', '').trim();
+        }
+        const discordMention = discordId ? `<@${discordId}>` : '<@DiscordID>';
+        const rawTag = discordTags.inter_register || '';
+        const formattedTag = formatDiscordTag(rawTag);
+        
+        const finalMsgText = `# <:badpurple:1506261750365032489>  ผู้เล่นต่างประเทศ ${discordMention} ผ่านการตรวจสอบจากแอดมินเรียบร้อยงับ <:badpurple:1506261750365032489> \n\n${formattedTag}`.trim();
+
+        navigator.clipboard.writeText(finalMsgText)
+          .then(() => {
+            setCopiedId(`${log.id}-ann`);
+            setTimeout(() => setCopiedId(null), 2000);
+          })
+          .catch(err => console.error('Failed to copy text: ', err));
+        return;
+      }
+
       const typeLabel = `✈️ **ประกาศลงทะเบียนผู้เล่นต่างประเทศ** ✈️`;
       const detailsBlock = `\`\`\`\n${log.details.trim()}\n\`\`\`\n`;
       
@@ -909,7 +941,7 @@ export default function App() {
 
       navigator.clipboard.writeText(finalMsgText)
         .then(() => {
-          setCopiedId(log.id);
+          setCopiedId(`${log.id}-log`);
           setTimeout(() => setCopiedId(null), 2000);
         })
         .catch(err => console.error('Failed to copy text: ', err));
@@ -918,6 +950,34 @@ export default function App() {
 
     // Custom formatting for voice_changer (Voice Changer Registration)
     if (cat === 'voice_changer') {
+      if (isAnnouncement) {
+        let discordId = '';
+        if (log.identifier) {
+          const match = log.identifier.match(/\d+/);
+          if (match) discordId = match[0];
+        }
+        if (!discordId && log.details) {
+          const match = log.details.match(/id\s*discord\s*[:：]\s*(\d+)/i);
+          if (match) discordId = match[1];
+        }
+        if (!discordId && log.identifier) {
+          discordId = log.identifier.replace('discord:', '').trim();
+        }
+        const discordMention = discordId ? `<@${discordId}>` : '<@DiscordID>';
+        const rawTag = discordTags.voice_changer || '';
+        const formattedTag = formatDiscordTag(rawTag);
+        
+        const finalMsgText = `# <:badgreen:1506261708086313090>  ผู้เล่น ${discordMention} ผ่านการตรวจสอบการใช้แอพแปลงเสียงจากแอดมินเรียบร้อยงับ <:badgreen:1506261708086313090>\n${formattedTag}`.trim();
+
+        navigator.clipboard.writeText(finalMsgText)
+          .then(() => {
+            setCopiedId(`${log.id}-ann`);
+            setTimeout(() => setCopiedId(null), 2000);
+          })
+          .catch(err => console.error('Failed to copy text: ', err));
+        return;
+      }
+
       const typeLabel = `🎤 **ประกาศขอใช้โปรแกรมแปลงเสียง** 🎤`;
       const detailsBlock = `\`\`\`\n${log.details.trim()}\n\`\`\`\n`;
       
@@ -925,7 +985,7 @@ export default function App() {
 
       navigator.clipboard.writeText(finalMsgText)
         .then(() => {
-          setCopiedId(log.id);
+          setCopiedId(`${log.id}-log`);
           setTimeout(() => setCopiedId(null), 2000);
         })
         .catch(err => console.error('Failed to copy text: ', err));
@@ -1902,6 +1962,26 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
                   placeholder="เช่น 123456789012345678"
                   value={discordTags.fine}
                   onChange={(e) => setDiscordTags({ ...discordTags, fine: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>ลงทะเบียนต่างประเทศ (Inter Register)</label>
+                <input 
+                  type="text" 
+                  placeholder="เช่น 123456789012345678"
+                  value={discordTags.inter_register || ''}
+                  onChange={(e) => setDiscordTags({ ...discordTags, inter_register: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>ขอใช้โปรแกรมแปลงเสียง (Voice Changer)</label>
+                <input 
+                  type="text" 
+                  placeholder="เช่น 123456789012345678"
+                  value={discordTags.voice_changer || ''}
+                  onChange={(e) => setDiscordTags({ ...discordTags, voice_changer: e.target.value })}
                 />
               </div>
 
