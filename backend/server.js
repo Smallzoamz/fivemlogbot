@@ -355,6 +355,39 @@ app.delete('/api/logs/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// PUT /api/logs/:id - Update specific log (category / details)
+app.put('/api/logs/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { category, details } = req.body;
+
+  try {
+    const updateData = {};
+    if (category) updateData.category = category.toLowerCase();
+    if (details !== undefined) updateData.details = details;
+
+    const { data: updatedLog, error } = await supabase
+      .from('logs')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      message: 'Log updated successfully',
+      log: {
+        ...updatedLog,
+        attachments: parseJsonField(updatedLog.attachments),
+        links: parseJsonField(updatedLog.links)
+      }
+    });
+  } catch (err) {
+    console.error(`Error updating log ${id}:`, err);
+    res.status(500).json({ error: 'Failed to update log' });
+  }
+});
+
 // POST /api/logs/read-all - Mark all logs as read for the logged-in admin
 app.post('/api/logs/read-all', authenticateToken, async (req, res) => {
   const userId = req.user.id;

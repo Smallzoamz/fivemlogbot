@@ -337,7 +337,8 @@ const isAnnouncementCategory = (category) => {
     cat === 'warning' || cat.includes('เหลือง') || cat.includes('yellow') ||
     cat.includes('ส้ม') || cat.includes('orange') ||
     cat === 'fine' || cat.includes('ปรับ') || cat.includes('fine') ||
-    cat === 'inter_register' || cat === 'voice_changer'
+    cat === 'inter_register' || cat === 'voice_changer' ||
+    cat === 'evidence'
   );
 };
 
@@ -370,6 +371,10 @@ export default function App() {
   }, [searchQuery]);
   const [categories, setCategories] = useState(['fine', 'warning', 'orange', 'ban', 'inter_register', 'voice_changer', 'evidence']);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [selectedLogToMove, setSelectedLogToMove] = useState(null);
+  const [targetCategory, setTargetCategory] = useState('warning');
+  const [fineAmount, setFineAmount] = useState('');
   const [discordTags, setDiscordTags] = useState(() => {
     const saved = localStorage.getItem('discordTags');
     const defaults = {
@@ -378,7 +383,8 @@ export default function App() {
       orange: '',
       fine: '',
       inter_register: '',
-      voice_changer: ''
+      voice_changer: '',
+      evidence: ''
     };
     return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
@@ -764,6 +770,57 @@ export default function App() {
     });
   };
 
+  const openMoveCategoryModal = (log) => {
+    setSelectedLogToMove(log);
+    setTargetCategory('warning');
+    setFineAmount('');
+    setShowMoveModal(true);
+  };
+
+  const handleMoveCategorySubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedLogToMove) return;
+
+    try {
+      let updatedDetails = selectedLogToMove.details;
+      if (targetCategory === 'fine') {
+        const cleanAmount = fineAmount.replace(/^[🪙💸💰\s]*ปรับ\s*[:：]?\s*/gi, '').replace(/[🪙💸💰\s]*$/gi, '').trim();
+        updatedDetails = `ปรับ : ${cleanAmount}\n${selectedLogToMove.details}`;
+      }
+
+      const response = await fetch(`/api/logs/${selectedLogToMove.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          category: targetCategory,
+          details: updatedDetails
+        })
+      });
+      const data = await response.json();
+
+      if (data && data.log) {
+        setLogs(prev => prev.map(l => l.id === selectedLogToMove.id ? { ...l, ...data.log } : l));
+        setShowMoveModal(false);
+        setSelectedLogToMove(null);
+        window.showAlert({
+          title: 'ย้ายหมวดหมู่สำเร็จ',
+          message: 'ย้ายข้อมูลหลักฐานไปยังหมวดหมู่ใหม่เรียบร้อยแล้วงับ',
+          variant: 'success'
+        });
+      }
+    } catch (err) {
+      console.error('Failed to move category:', err);
+      window.showAlert({
+        title: 'เกิดข้อผิดพลาด',
+        message: 'ไม่สามารถย้ายหมวดหมู่หลักฐานได้ กรุณาลองใหม่อีกครั้ง',
+        variant: 'danger'
+      });
+    }
+  };
+
   const handleDeleteLog = (id) => {
     showConfirmModal({
       title: 'ยืนยันการลบบันทึกข้อมูล',
@@ -994,6 +1051,46 @@ export default function App() {
       }
 
       const typeLabel = `🎤 **ประกาศขอใช้โปรแกรมแปลงเสียง** 🎤`;
+      const detailsBlock = `\`\`\`\n${log.details.trim()}\n\`\`\`\n`;
+      
+      const finalMsgText = `${typeLabel}\n${detailsBlock}${evidenceLines}`;
+
+      navigator.clipboard.writeText(finalMsgText)
+        .then(() => {
+          setCopiedId(`${log.id}-log`);
+          setTimeout(() => setCopiedId(null), 2000);
+        })
+        .catch(err => console.error('Failed to copy text: ', err));
+      return;
+    }
+
+    // Custom formatting for evidence (Evidence Log / Call user)
+    if (cat === 'evidence') {
+      if (isAnnouncement) {
+        let discordId = getDiscordIdFromDetails(log.details);
+        if (!discordId && log.identifier) {
+          const match = log.identifier.match(/\d+/);
+          if (match) discordId = match[0];
+        }
+        if (!discordId && log.identifier) {
+          discordId = log.identifier.replace('discord:', '').trim();
+        }
+        const discordMention = discordId ? `<@${discordId}>` : '<@DiscordID>';
+        const rawTag = discordTags.evidence || '';
+        const formattedTag = formatDiscordTag(rawTag);
+        
+        const finalMsgText = `ประกาศเรียกตัวคุณ  ${discordMention} <#1503375179676520610>  ภายใน 24 ชั่วโมง ด้วยครับ\n${formattedTag}`.trim();
+
+        navigator.clipboard.writeText(finalMsgText)
+          .then(() => {
+            setCopiedId(`${log.id}-ann`);
+            setTimeout(() => setCopiedId(null), 2000);
+          })
+          .catch(err => console.error('Failed to copy text: ', err));
+        return;
+      }
+      
+      const typeLabel = `📷 **ประกาศเก็บหลักฐาน** 📷`;
       const detailsBlock = `\`\`\`\n${log.details.trim()}\n\`\`\`\n`;
       
       const finalMsgText = `${typeLabel}\n${detailsBlock}${evidenceLines}`;
@@ -1802,6 +1899,16 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
                               </>
                             )}
                           </button>
+
+                          {log.category.toLowerCase() === 'evidence' && (
+                            <button 
+                              onClick={() => openMoveCategoryModal(log)}
+                              className="btn-action-copy"
+                              style={{ background: 'rgba(168, 85, 247, 0.15)', borderColor: 'rgba(168, 85, 247, 0.4)', color: '#c084fc' }}
+                            >
+                              📦 ย้ายหมวดหมู่
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <button 
@@ -2000,6 +2107,16 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
                 />
               </div>
 
+              <div className="form-group">
+                <label>เรียกตัวผู้เล่น/เก็บหลักฐาน (Evidence)</label>
+                <input 
+                  type="text" 
+                  placeholder="เช่น 123456789012345678"
+                  value={discordTags.evidence || ''}
+                  onChange={(e) => setDiscordTags({ ...discordTags, evidence: e.target.value })}
+                />
+              </div>
+
               <div className="modal-actions">
                 <button type="button" onClick={() => setShowSettingsModal(false)} className="btn-secondary">ยกเลิก</button>
                 <button type="submit" className="btn-submit">บันทึกตั้งค่า</button>
@@ -2039,6 +2156,71 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
                 />
               )}
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MOVE CATEGORY MODAL */}
+      {showMoveModal && selectedLogToMove && createPortal(
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h2>ย้ายหมวดหมู่ของหลักฐาน</h2>
+              <button onClick={() => setShowMoveModal(false)} className="btn-close-modal">&times;</button>
+            </div>
+            
+            <form onSubmit={handleMoveCategorySubmit}>
+              <div className="form-group">
+                <label>เลือกหมวดหมู่ปลายทาง</label>
+                <select 
+                  value={targetCategory} 
+                  onChange={(e) => setTargetCategory(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: '6px',
+                    background: '#1e1f22',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    color: '#dbdee1',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="warning">🟨 ใบเหลือง (Warning)</option>
+                  <option value="orange">🟧 ใบส้ม (Orange)</option>
+                  <option value="ban">🟥 ใบแดง (Ban)</option>
+                  <option value="fine">💸 ค่าปรับ (Fine)</option>
+                </select>
+              </div>
+
+              {targetCategory === 'fine' && (
+                <div className="form-group" style={{ marginTop: '12px' }}>
+                  <label>ระบุจำนวนค่าปรับ (เช่น 50,000 หรือ 100,000) *</label>
+                  <input 
+                    type="text" 
+                    required
+                    placeholder="ระบุจำนวนค่าปรับ..."
+                    value={fineAmount}
+                    onChange={(e) => setFineAmount(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      borderRadius: '6px',
+                      background: '#1e1f22',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      color: '#dbdee1',
+                      outline: 'none',
+                      marginTop: '6px'
+                    }}
+                  />
+                </div>
+              )}
+
+              <div className="modal-actions" style={{ marginTop: '20px' }}>
+                <button type="button" onClick={() => setShowMoveModal(false)} className="btn-secondary">ยกเลิก</button>
+                <button type="submit" className="btn-submit">ยืนยันการย้าย</button>
+              </div>
+            </form>
           </div>
         </div>,
         document.body
