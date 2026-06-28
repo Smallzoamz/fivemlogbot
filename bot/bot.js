@@ -434,6 +434,62 @@ function getNewTicketChannelName(currentName, category) {
   }
 }
 
+// Helper for robust GeoIP Lookup (multi-source with fallbacks)
+async function getGeoIpInfo(ip) {
+  // 1. Try ipwho.is (10,000 free requests/month, highly accurate)
+  try {
+    const res = await axios.get(`https://ipwho.is/${ip}`, { timeout: 3000 });
+    if (res.data && res.data.success) {
+      return {
+        countryCode: res.data.country_code,
+        countryName: res.data.country,
+        latitude: res.data.latitude,
+        longitude: res.data.longitude,
+        cityName: res.data.city || '',
+        regionName: res.data.region || ''
+      };
+    }
+  } catch (err) {
+    console.warn(`ipwho.is failed for IP ${ip}: ${err.message}`);
+  }
+
+  // 2. Try ip-api.com (45 requests/minute, highly accurate but non-commercial)
+  try {
+    const res = await axios.get(`http://ip-api.com/json/${ip}`, { timeout: 3000 });
+    if (res.data && res.data.status === 'success') {
+      return {
+        countryCode: res.data.countryCode,
+        countryName: res.data.country,
+        latitude: res.data.lat,
+        longitude: res.data.lon,
+        cityName: res.data.city || '',
+        regionName: res.data.regionName || ''
+      };
+    }
+  } catch (err) {
+    console.warn(`ip-api.com failed for IP ${ip}: ${err.message}`);
+  }
+
+  // 3. Fallback to freeipapi.com (unlimited, less accurate but reliable fallback)
+  try {
+    const res = await axios.get(`https://freeipapi.com/api/json/${ip}`, { timeout: 3000 });
+    if (res.data && res.data.countryCode) {
+      return {
+        countryCode: res.data.countryCode,
+        countryName: res.data.countryName || 'Unknown',
+        latitude: res.data.latitude || 0,
+        longitude: res.data.longitude || 0,
+        cityName: res.data.cityName || '',
+        regionName: res.data.regionName || ''
+      };
+    }
+  } catch (err) {
+    console.error(`freeipapi.com fallback failed for IP ${ip}: ${err.message}`);
+  }
+
+  return null;
+}
+
 // Configure Axios instance for backend communications
 const api = axios.create({
   baseURL: API_URL,
@@ -771,10 +827,10 @@ client.on('messageCreate', async (message) => {
           if (ipMatch) {
             const extractedIp = ipMatch[0];
             try {
-              const geoResponse = await axios.get(`https://freeipapi.com/api/json/${extractedIp}`, { timeout: 3000 });
-              if (geoResponse.data && geoResponse.data.countryCode) {
-                resolvedCountry = geoResponse.data.countryName || geoResponse.data.countryCode;
-                if (geoResponse.data.countryCode === 'TH') {
+              const geoData = await getGeoIpInfo(extractedIp);
+              if (geoData && geoData.countryCode) {
+                resolvedCountry = geoData.countryName || geoData.countryCode;
+                if (geoData.countryCode === 'TH') {
                   isFakeRegistration = true;
                 }
               }

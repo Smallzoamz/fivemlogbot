@@ -294,22 +294,123 @@ app.post('/api/logs', authenticateToken, async (req, res) => {
   }
 });
 
+// Helper for robust GeoIP Lookup (multi-source with fallbacks)
+async function getGeoIpInfo(ip) {
+  // 1. Try ipwho.is (10,000 free requests/month, highly accurate)
+  try {
+    const res = await axios.get(`https://ipwho.is/${ip}`, { timeout: 3000 });
+    if (res.data && res.data.success) {
+      return {
+        countryCode: res.data.country_code,
+        countryName: res.data.country,
+        latitude: res.data.latitude,
+        longitude: res.data.longitude,
+        cityName: res.data.city || '',
+        regionName: res.data.region || ''
+      };
+    }
+  } catch (err) {
+    console.warn(`ipwho.is failed for IP ${ip}: ${err.message}`);
+  }
+
+  // 2. Try ip-api.com (45 requests/minute, highly accurate but non-commercial, might be rate-limited on shared Vercel IP)
+  try {
+    const res = await axios.get(`http://ip-api.com/json/${ip}`, { timeout: 3000 });
+    if (res.data && res.data.status === 'success') {
+      return {
+        countryCode: res.data.countryCode,
+        countryName: res.data.country,
+        latitude: res.data.lat,
+        longitude: res.data.lon,
+        cityName: res.data.city || '',
+        regionName: res.data.regionName || ''
+      };
+    }
+  } catch (err) {
+    console.warn(`ip-api.com failed for IP ${ip}: ${err.message}`);
+  }
+
+  // 3. Fallback to freeipapi.com (unlimited, less accurate but reliable fallback)
+  try {
+    const res = await axios.get(`https://freeipapi.com/api/json/${ip}`, { timeout: 3000 });
+    if (res.data && res.data.countryCode) {
+      return {
+        countryCode: res.data.countryCode,
+        countryName: res.data.countryName || 'Unknown',
+        latitude: res.data.latitude || 0,
+        longitude: res.data.longitude || 0,
+        cityName: res.data.cityName || '',
+        regionName: res.data.regionName || ''
+      };
+    }
+  } catch (err) {
+    console.error(`freeipapi.com fallback failed for IP ${ip}: ${err.message}`);
+  }
+
+  return null;
+}
+
 // GET /api/geoip/:ip - Proxy IP lookup to avoid client-side CORS and adblocker issues
 app.get('/api/geoip/:ip', authenticateToken, async (req, res) => {
   const { ip } = req.params;
   try {
-    const response = await axios.get(`https://freeipapi.com/api/json/${ip}`);
-    res.json(response.data);
+    const data = await getGeoIpInfo(ip);
+    if (data) {
+      res.json(data);
+    } else {
+      res.status(500).json({ error: 'Failed to resolve IP from all sources' });
+    }
   } catch (err) {
     console.error('Failed to proxy GeoIP lookup for IP ' + ip + ':', err.message);
     res.status(500).json({ error: 'Failed to resolve IP' });
   }
 });
 
-// GET /api/map/:lat/:lon - Public redirect to Yandex Static Map
-app.get('/api/map/:lat/:lon', (req, res) => {
+// GET /api/map/:lat/:lon - Proxy/Serve Static Map (Mapbox, Google, or Yandex Fallback)
+app.get('/api/map/:lat/:lon', async (req, res) => {
   const { lat, lon } = req.params;
-  const mapUrl = `https://static-maps.yandex.ru/1.x/?ll=${lon},${lat}&z=7&l=map&size=500,300&pt=${lon},${lat},pm2gnl&lang=en_US`;
+  
+  const mapboxToken = process.env.MAPBOX_ACCESS_TOKEN;
+  const googleKey = process.env.GOOGLE_MAPS_API_KEY;
+  const geoapifyKey = process.env.GEOAPIFY_API_KEY;
+
+  try {
+    if (mapboxToken) {
+      // Mapbox Static Images API (Modern Cyber Dark style matching the system)
+      // Correct marker format: pin-s+06b6d4(lon,lat)
+      const overlay = `pin-s+06b6d4(${lon},${lat})`;
+      const mapUrl = `https://api.mapbox.com/styles/v1/mapbox/dark-v10/static/${encodeURIComponent(overlay)}/${lon},${lat},11/500x300?access_token=${mapboxToken}`;
+      
+      const response = await axios.get(mapUrl, { 
+        responseType: 'arraybuffer',
+        headers: { Referer: 'https://fivem-loginfo.vercel.app' }
+      });
+      res.setHeader('Content-Type', 'image/png');
+      return res.send(response.data);
+    }
+
+    if (googleKey) {
+      // Google Maps Static API
+      const mapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lon}&zoom=11&size=500x300&markers=color:blue%7C${lat},${lon}&key=${googleKey}`;
+      const response = await axios.get(mapUrl, { responseType: 'arraybuffer' });
+      res.setHeader('Content-Type', 'image/png');
+      return res.send(response.data);
+    }
+
+    if (geoapifyKey) {
+      // Geoapify Static Map API (using OpenStreetMap style)
+      const mapUrl = `https://maps.geoapify.com/v1/staticmap?style=osm-carto&width=500&height=300&center=lonlat:${lon},${lat}&zoom=11&marker=lonlat:${lon},${lat};color:%2306b6d4;size:medium&apiKey=${geoapifyKey}`;
+      const response = await axios.get(mapUrl, { responseType: 'arraybuffer' });
+      res.setHeader('Content-Type', 'image/png');
+      return res.send(response.data);
+    }
+  } catch (err) {
+    console.error('Failed to proxy premium map:', err.message);
+    // If premium proxy fails, we will fall through to Yandex fallback redirect below
+  }
+
+  // Fallback to Yandex Static Map (Zero-config keyless fallback redirect)
+  const mapUrl = `https://static-maps.yandex.ru/1.x/?ll=${lon},${lat}&z=11&l=map&size=500,300&pt=${lon},${lat},pm2gnl&lang=en_US`;
   res.redirect(mapUrl);
 });
 
@@ -358,12 +459,14 @@ app.delete('/api/logs/:id', authenticateToken, async (req, res) => {
 // PUT /api/logs/:id - Update specific log (category / details)
 app.put('/api/logs/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { category, details } = req.body;
+  const { category, details, player_name, identifier } = req.body;
 
   try {
     const updateData = {};
     if (category) updateData.category = category.toLowerCase();
     if (details !== undefined) updateData.details = details;
+    if (player_name !== undefined) updateData.player_name = player_name;
+    if (identifier !== undefined) updateData.identifier = identifier;
 
     const { data: updatedLog, error } = await supabase
       .from('logs')

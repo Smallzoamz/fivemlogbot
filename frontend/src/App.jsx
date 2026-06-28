@@ -147,6 +147,135 @@ const parseLogDetails = (detailsText) => {
   };
 };
 
+const getPlayersFromLog = (log) => {
+  if (!log || !log.details) return [];
+  const { fields } = parseLogDetails(log.details);
+  const players = [];
+  let currentPlayer = null;
+
+  const isPlayerNameKey = (key) => {
+    const k = key.toLowerCase();
+    return k === 'playername' || k === 'ผู้เล่น' || k === 'ชื่อผู้เล่น' || k === 'name' || k === 'player';
+  };
+
+  fields.forEach(f => {
+    if (isPlayerNameKey(f.key)) {
+      if (currentPlayer) {
+        players.push(currentPlayer);
+      }
+      currentPlayer = {
+        name: f.value,
+        fields: [f]
+      };
+    } else {
+      if (currentPlayer) {
+        currentPlayer.fields.push(f);
+      } else {
+        currentPlayer = {
+          name: 'Unknown',
+          fields: [f]
+        };
+      }
+    }
+  });
+
+  if (currentPlayer) {
+    players.push(currentPlayer);
+  }
+
+  return players;
+};
+
+const getPlayerIdentifier = (player) => {
+  if (!player || !player.fields) return '';
+  const idField = player.fields.find(f => {
+    const k = f.key.toLowerCase();
+    return k.includes('hex') || k.includes('steam') || k.includes('id') || k.includes('identifier');
+  });
+  return idField ? idField.value : '';
+};
+
+const getLogReason = (log) => {
+  if (!log || !log.details) return '';
+  const { description, fields } = parseLogDetails(log.details);
+  const reasonField = fields.find(f => {
+    const k = f.key.toLowerCase().trim();
+    return k === 'reason' || k === 'เหตุผล' || k === 'รายละเอียด';
+  });
+  if (reasonField) {
+    return reasonField.value;
+  }
+  return description || '';
+};
+
+// Leaflet Map Component (Interactive, Dark Mode tiles with neon-cyan pulsing marker)
+const LeafletMap = ({ lat, lon, country, city }) => {
+  const mapRef = React.useRef(null);
+  const mapInstanceRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!mapRef.current) return;
+    if (typeof window.L === 'undefined') {
+      console.warn("Leaflet library not loaded yet.");
+      return;
+    }
+
+    const L = window.L;
+
+    // Destroy existing map instance if it exists
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+    }
+
+    try {
+      // Initialize Leaflet Map
+      const map = L.map(mapRef.current, {
+        center: [lat, lon],
+        zoom: 11,
+        zoomControl: false,
+        attributionControl: false
+      });
+
+      mapInstanceRef.current = map;
+
+      // Add CartoDB Dark Matter tile layer for dark cyber aesthetic
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19
+      }).addTo(map);
+
+      // Create a custom pulsing neon-cyan marker
+      const customIcon = L.divIcon({
+        className: 'custom-neon-marker',
+        html: `<div class="pulsing-marker-core"></div><div class="pulsing-marker-ring"></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      });
+
+      L.marker([lat, lon], { icon: customIcon })
+        .addTo(map)
+        .bindPopup(`<b>${city ? `${city + ", "}` : ""}${country}</b><br/>พิกัด: ${lat.toFixed(4)}, ${lon.toFixed(4)}`)
+        .openPopup();
+        
+      // Add zoom control at bottom-right
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
+    } catch (err) {
+      console.error("Leaflet initialization failed:", err);
+    }
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [lat, lon, country, city]);
+
+  return (
+    <div ref={mapRef} style={{ width: '100%', height: '280px', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(6, 182, 212, 0.2)' }} />
+  );
+};
+
 const getFormattedFields = (log) => {
   const { description, fields } = parseLogDetails(log.details);
   const finalFields = [...fields];
@@ -375,6 +504,8 @@ export default function App() {
   const [selectedLogToMove, setSelectedLogToMove] = useState(null);
   const [targetCategory, setTargetCategory] = useState('warning');
   const [fineAmount, setFineAmount] = useState('');
+  const [selectedPlayerToMove, setSelectedPlayerToMove] = useState('all');
+  const [moveReason, setMoveReason] = useState('');
   const [discordTags, setDiscordTags] = useState(() => {
     const saved = localStorage.getItem('discordTags');
     const defaults = {
@@ -774,6 +905,17 @@ export default function App() {
     setSelectedLogToMove(log);
     setTargetCategory('warning');
     setFineAmount('');
+    
+    const existingReason = getLogReason(log);
+    setMoveReason(existingReason || '');
+
+    const players = getPlayersFromLog(log);
+    if (players.length > 1) {
+      setSelectedPlayerToMove('all');
+    } else {
+      setSelectedPlayerToMove('0');
+    }
+
     setShowMoveModal(true);
   };
 
@@ -781,36 +923,157 @@ export default function App() {
     e.preventDefault();
     if (!selectedLogToMove) return;
 
+    if (targetCategory === 'fine' && !fineAmount.trim()) {
+      window.showAlert({
+        title: 'กรุณาระบุค่าปรับ',
+        message: 'เนื่องจากย้ายไปหมวดค่าปรับ กรุณาระบุจำนวนค่าปรับด้วย',
+        variant: 'danger'
+      });
+      return;
+    }
+
     try {
-      let updatedDetails = selectedLogToMove.details;
+      const playersList = getPlayersFromLog(selectedLogToMove);
+      let updatedDetails = '';
+      
+      let finalReason = moveReason;
+      let fineAmountLine = '';
       if (targetCategory === 'fine') {
         const cleanAmount = fineAmount.replace(/^[🪙💸💰\s]*ปรับ\s*[:：]?\s*/gi, '').replace(/[🪙💸💰\s]*$/gi, '').trim();
-        updatedDetails = `ปรับ : ${cleanAmount}\n${selectedLogToMove.details}`;
+        // No colon so parseLogDetails keeps this as description (like normal fine logs).
+        // Reason text stays in the Reason field separately.
+        fineAmountLine = `ปรับ ${cleanAmount}`;
       }
 
-      const response = await fetch(`/api/logs/${selectedLogToMove.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          category: targetCategory,
-          details: updatedDetails
-        })
-      });
-      const data = await response.json();
-
-      if (data && data.log) {
-        setLogs(prev => prev.map(l => l.id === selectedLogToMove.id ? { ...l, ...data.log } : l));
-        setShowMoveModal(false);
-        setSelectedLogToMove(null);
-        window.showAlert({
-          title: 'ย้ายหมวดหมู่สำเร็จ',
-          message: 'ย้ายข้อมูลหลักฐานไปยังหมวดหมู่ใหม่เรียบร้อยแล้วงับ',
-          variant: 'success'
+      if (selectedPlayerToMove === 'all') {
+        let text = '';
+        playersList.forEach(p => {
+          p.fields.forEach(f => {
+            const k = f.key.toLowerCase().trim();
+            if (k !== 'reason' && k !== 'เหตุผล' && k !== 'รายละเอียด') {
+              text += `${f.key} : ${f.value}\n`;
+            }
+          });
         });
+        if (fineAmountLine) text += `${fineAmountLine}\n`;
+        text += `Reason : ${finalReason}`;
+        updatedDetails = text.trim();
+
+        const response = await fetch(`/api/logs/${selectedLogToMove.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            category: targetCategory,
+            details: updatedDetails
+          })
+        });
+        const data = await response.json();
+
+        if (data && data.log) {
+          setLogs(prev => prev.map(l => l.id === selectedLogToMove.id ? { ...l, ...data.log } : l));
+        }
+      } else {
+        const playerIdx = parseInt(selectedPlayerToMove, 10);
+        const targetPlayer = playersList[playerIdx];
+
+        let text = '';
+        targetPlayer.fields.forEach(f => {
+          const k = f.key.toLowerCase().trim();
+          if (k !== 'reason' && k !== 'เหตุผล' && k !== 'รายละเอียด') {
+            text += `${f.key} : ${f.value}\n`;
+          }
+        });
+        if (fineAmountLine) text += `${fineAmountLine}\n`;
+        text += `Reason : ${finalReason}`;
+        const targetDetails = text.trim();
+
+        const targetIdentifier = getPlayerIdentifier(targetPlayer);
+
+        if (playersList.length <= 1) {
+          const response = await fetch(`/api/logs/${selectedLogToMove.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              category: targetCategory,
+              details: targetDetails,
+              player_name: targetPlayer.name,
+              identifier: targetIdentifier
+            })
+          });
+          const data = await response.json();
+
+          if (data && data.log) {
+            setLogs(prev => prev.map(l => l.id === selectedLogToMove.id ? { ...l, ...data.log } : l));
+          }
+        } else {
+          const postResponse = await fetch('/api/logs', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              category: targetCategory,
+              player_name: targetPlayer.name,
+              identifier: targetIdentifier,
+              details: targetDetails,
+              attachments: selectedLogToMove.attachments || [],
+              links: selectedLogToMove.links || []
+            })
+          });
+          const newLogData = await postResponse.json();
+
+          const remainingPlayers = playersList.filter((_, idx) => idx !== playerIdx);
+          let remainingText = '';
+          remainingPlayers.forEach(p => {
+            p.fields.forEach(f => {
+              const k = f.key.toLowerCase().trim();
+              if (k !== 'reason' && k !== 'เหตุผล' && k !== 'รายละเอียด') {
+                remainingText += `${f.key} : ${f.value}\n`;
+              }
+            });
+          });
+          const originalReason = getLogReason(selectedLogToMove);
+          if (originalReason) {
+            remainingText += `Reason : ${originalReason}\n`;
+          }
+          const remainingDetails = remainingText.trim();
+
+          const updateResponse = await fetch(`/api/logs/${selectedLogToMove.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              details: remainingDetails
+            })
+          });
+          const updatedOriginalData = await updateResponse.json();
+
+          if (updatedOriginalData && updatedOriginalData.log) {
+            let updatedLogs = logs.map(l => l.id === selectedLogToMove.id ? { ...l, ...updatedOriginalData.log } : l);
+            if (newLogData && newLogData.id) {
+              updatedLogs = [newLogData, ...updatedLogs];
+            }
+            setLogs(updatedLogs);
+          }
+        }
       }
+
+      setShowMoveModal(false);
+      setSelectedLogToMove(null);
+      window.showAlert({
+        title: 'ย้ายหมวดหมู่สำเร็จ',
+        message: 'ย้ายข้อมูลหลักฐานและอัปเดตเหตุผลเรียบร้อยแล้วงับ',
+        variant: 'success'
+      });
     } catch (err) {
       console.error('Failed to move category:', err);
       window.showAlert({
@@ -1010,7 +1273,8 @@ export default function App() {
       if (ipInfo && ipInfo.lat && ipInfo.lon) {
         const cleanHost = window.location.origin;
         const shortMapUrl = `${cleanHost}/api/map/${ipInfo.lat}/${ipInfo.lon}`;
-        mapLine = `\n📍 **แผนที่พิกัดประเทศผู้เล่น (Verified IP Location):**\n${shortMapUrl}\n`;
+        const googleMapsUrl = `https://www.google.com/maps?q=${ipInfo.lat},${ipInfo.lon}`;
+        mapLine = `\n📍 **แผนที่พิกัดประเทศผู้เล่น (Verified IP Location):**\n- รูปภาพแผนที่: ${shortMapUrl}\n- ดูบน Google Maps: [คลิกที่นี่](${googleMapsUrl})\n`;
       }
       
       const finalMsgText = `${typeLabel}\n${detailsBlock}${evidenceLines}${mapLine}`;
@@ -1609,15 +1873,28 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
                           {/* EMBED MAP FOR INTER REGISTER */}
                           {log.category.toLowerCase() === 'inter_register' && ipInfo && ipInfo.lat && ipInfo.lon && (
                             <div className="embed-map-container">
-                              <div className="embed-map-header">
-                                <Globe className="w-3.5 h-3.5 mr-1 text-neon-cyan" />
-                                <span>Verified IP Geo-Location: {ipInfo.city ? `${ipInfo.city}, ` : ''}{ipInfo.country}</span>
+                              <div className="embed-map-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                                <div style={{ display: 'flex', alignItems: 'center' }}>
+                                  <Globe className="w-3.5 h-3.5 mr-1 text-neon-cyan" />
+                                  <span>Verified IP Geo-Location: {ipInfo.city ? `${ipInfo.city}, ` : ''}{ipInfo.country}</span>
+                                </div>
+                                <a 
+                                  href={`https://www.google.com/maps?q=${ipInfo.lat},${ipInfo.lon}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  title="ดูบน Google Maps" 
+                                  className="text-neon-cyan hover:underline"
+                                  style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.75rem' }}
+                                >
+                                  Google Maps <ExternalLink className="w-3 h-3" />
+                                </a>
                               </div>
-                              <div className="embed-map-wrapper">
-                                <img 
-                                  src={`https://static-maps.yandex.ru/1.x/?ll=${ipInfo.lon},${ipInfo.lat}&z=7&l=map&size=500,280&pt=${ipInfo.lon},${ipInfo.lat},pm2gnl&lang=en_US`} 
-                                  alt="Player Location Map" 
-                                  className="embed-map-img" 
+                              <div className="embed-map-wrapper" style={{ marginTop: '8px' }}>
+                                <LeafletMap 
+                                  lat={ipInfo.lat} 
+                                  lon={ipInfo.lon} 
+                                  country={ipInfo.country} 
+                                  city={ipInfo.city} 
                                 />
                               </div>
                             </div>
@@ -2171,7 +2448,31 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
             </div>
             
             <form onSubmit={handleMoveCategorySubmit}>
-              <div className="form-group">
+              {getPlayersFromLog(selectedLogToMove).length > 1 && (
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label style={{ display: 'block', marginBottom: '6px' }}>เลือกผู้เล่นที่ต้องการย้าย</label>
+                  <select
+                    value={selectedPlayerToMove}
+                    onChange={(e) => setSelectedPlayerToMove(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      borderRadius: '6px',
+                      background: '#1e1f22',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      color: '#dbdee1',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="all">👥 ย้ายผู้เล่นทุกคนในบันทึกนี้</option>
+                    {getPlayersFromLog(selectedLogToMove).map((p, idx) => (
+                      <option key={idx} value={String(idx)}>👤 เฉพาะ: {p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="form-group" style={{ marginBottom: '12px' }}>
                 <label>เลือกหมวดหมู่ปลายทาง</label>
                 <select 
                   value={targetCategory} 
@@ -2194,7 +2495,7 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
               </div>
 
               {targetCategory === 'fine' && (
-                <div className="form-group" style={{ marginTop: '12px' }}>
+                <div className="form-group" style={{ marginBottom: '12px' }}>
                   <label>ระบุจำนวนค่าปรับ (เช่น 50,000 หรือ 100,000) *</label>
                   <input 
                     type="text" 
@@ -2215,6 +2516,27 @@ ${fineLine}${playerContent}${reasonContent}${evidenceLines}${tagSuffix}`;
                   />
                 </div>
               )}
+
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', marginBottom: '6px' }}>ระบุเหตุผล / รายละเอียดใหม่ (จะแทนที่เหตุผลเดิม)</label>
+                <textarea 
+                  placeholder="ระบุเหตุผลการย้ายเคส..."
+                  value={moveReason}
+                  onChange={(e) => setMoveReason(e.target.value)}
+                  rows={4}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: '6px',
+                    background: '#1e1f22',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    color: '#dbdee1',
+                    outline: 'none',
+                    resize: 'vertical',
+                    fontFamily: 'inherit'
+                  }}
+                />
+              </div>
 
               <div className="modal-actions" style={{ marginTop: '20px' }}>
                 <button type="button" onClick={() => setShowMoveModal(false)} className="btn-secondary">ยกเลิก</button>
