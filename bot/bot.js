@@ -405,7 +405,7 @@ function getNewTicketChannelName(currentName, category) {
   let username = 'user';
   const parts = currentName.split('-');
   if (parts.length > 1) {
-    if (['🟥', '🟨', '🟧', '💸', '✈️', '📷', '📂'].includes(parts[0])) {
+    if (['🟥', '🟨', '🟧', '💸', '✈️', '📷', '🎤', '🎙️', '📂'].includes(parts[0])) {
       username = parts.slice(2).join('-');
     } else {
       username = parts.slice(1).join('-');
@@ -750,8 +750,8 @@ client.on('messageCreate', async (message) => {
   const channel = message.channel;
   
   // Identify if this is a ticket channel (either by database validation or channel name prefix)
-  const isTicket = channel.name.startsWith('ticket-') || 
-                   ['🟥', '🟨', '🟧', '💸', '✈️', '📷', '📂'].some(emoji => channel.name.startsWith(`${emoji}-`));
+  const isTicket = channel.name.startsWith('ticket-') ||
+                   ['🟥', '🟨', '🟧', '💸', '✈️', '📷', '🎤', '🎙️', '📂'].some(emoji => channel.name.startsWith(`${emoji}-`));
   if (channel.type === ChannelType.GuildText && isTicket) {
     if (shouldSkipLog(message.content)) return;
     try {
